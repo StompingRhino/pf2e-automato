@@ -117,3 +117,23 @@ test("toRemind: напоминаем о живых якорях, не подде
   const fresh = a({ combat: "c", round: 3 }), old = a({ combat: "c", round: 2 }), gone = a({ combat: "c", round: 2 }, true), other = a({ combat: "x", round: 3 });
   assert.deepEqual(sustain.toRemind([fresh, old, gone, other], pos), [old, other]);
 });
+
+test("onDeleteMessage: сцену удалили сразу за сообщением — якорь не трогаем (orphaned) / «does not exist» глотаем, иное — пробрасываем", async () => {
+  const author = mkActor("Actor.a");
+  setup([author]);
+  try {
+    await sustain.onCast(msg(author, spell()));
+    const anchor = anchors(author)[0], m = msg(author, spell());
+    let calls = 0;
+    anchor.delete = async () => { calls++; throw new Error("The Scene s1 does not exist in scenes"); };
+    await sustain.onDeleteMessage(m);
+    assert.equal(calls, 1, "удаление пробовали, ошибка «does not exist» проглочена");
+    anchor.delete = async () => { throw new Error("boom"); };
+    await assert.rejects(sustain.onDeleteMessage(m), /boom/);
+    calls = 0;
+    anchor.delete = async () => { calls++; };
+    author.isToken = true; author.token = { id: "t", parent: { tokens: new Map() } };   // токена в сцене уже нет
+    await sustain.onDeleteMessage(m);
+    assert.equal(calls, 0, "орфанный актёр: удаление не вызывается");
+  } finally { teardown(); }
+});

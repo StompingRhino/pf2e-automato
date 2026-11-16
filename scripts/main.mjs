@@ -29,6 +29,7 @@ import * as rechargeButton from "./recharge-button.mjs";
 import * as turnConditions from "./turn-conditions.mjs";
 import * as escape from "./escape.mjs";
 import * as events from "./events.mjs";
+import * as counterspell from "./counterspell.mjs";
 import * as hold from "./hold.mjs";
 import * as cast from "./cast.mjs";
 import * as migrateActivate from "./migrate-activate.mjs";
@@ -141,7 +142,7 @@ Hooks.once("socketlib.ready", () => {
 Hooks.once("setup", () => leader.start());
 
 Hooks.once("init", () => {
-  settings.init(); compat.init(); zone.init(); areaCleanup.init(); height.init(); saves.init(); use.init(); actions.init(); chat.init(); reactions.init(); sheet.init(); badge.init(); vision.init(); invis.init(); workshop.init(); hud.init(); damageGate.init(); damageButton.init(); rechargeButton.init(); turnConditions.init(); escape.init(); events.init(); sustain.init(); cast.init(); migrateActivate.init(); affliction.init(); summon.init(); initNexus();
+  settings.init(); compat.init(); zone.init(); areaCleanup.init(); height.init(); saves.init(); use.init(); actions.init(); chat.init(); reactions.init(); sheet.init(); badge.init(); vision.init(); invis.init(); workshop.init(); hud.init(); damageGate.init(); damageButton.init(); rechargeButton.init(); turnConditions.init(); escape.init(); events.init(); counterspell.init(); sustain.init(); cast.init(); migrateActivate.init(); affliction.init(); summon.init(); initNexus();
   game.modules.get(MOD).api = {
     // контракт plan.md §2 main
     attachZone: zone.attachZone, sweepZone: zone.sweepZone, closeZone: zone.closeZone, expireZones: zone.expireZones,
@@ -156,7 +157,7 @@ Hooks.once("init", () => {
     automationsGroups: compat.automationsGroups, shouldYield: compat.shouldYield,
     validateRule: rules.validateRule, deriveFromMarkup: rules.deriveFromMarkup, deriveCast: rules.deriveCast, castItem: cast.castItem, slugOf: rules.slugOf, sourceOf: rules.sourceOf,
     openWorkshop: workshop.Workshop.open, afflictionTick: affliction.tick, afflictionSweep: affliction.sweep,
-    degreeFromTotal, callGM, HANDLERS, holdResolve: hold.resolveManual, isHeld: hold.isHeld, markCounterHold: events.markCounterHold
+    degreeFromTotal, callGM, HANDLERS, holdResolve: hold.resolveManual, isHeld: hold.isHeld, markCounterHold: (m) => events.markCounterHold(m, true)
   };
 });
 

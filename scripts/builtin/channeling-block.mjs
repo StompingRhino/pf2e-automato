@@ -2,43 +2,21 @@
 // Бросок и прибавку к твёрдости pf2e делает сам: «Effect: Channeling Block» (feat-effects) — бейдж-формула (@item.level)d8 и ItemAlteration твёрдости щита.
 // Здесь только то, чего pf2e не делает: слот и его трата. Выбор — решение игрока: варианты «Блок + <заклинание> (ранг)» идут кнопками в самой подсказке «Блок»
 // (shield-block.mjs), без модального окна внутри очереди применения урона.
-import { L } from "../util.mjs";
+import { MOD, L } from "../util.mjs";
 import { addEffect, cardButton, esc, heldSlug, paHas, whisper } from "./lib.mjs";
+import { blockOptions as slotOptions, uniqueOptions, entriesOf } from "../slots.mjs";
+
+export { uniqueOptions, entriesOf };
 
 export const SLUGS = new Set(["channeling-block"]);
 export const EFFECT = "Compendium.pf2e.feat-effects.Item.Rzg3c7hfkvTlxPDp";
 const SPELLS = new Set(["heal", "harm"]);
 
-/**
- * Чистая: варианты траты. entry: {id, name, mode: "prepared" | "counted", slots: {ранг: {value, max, prepared: [{id, expended}]}}, spells: [{id, slug, name, base, signature}]}.
- * prepared — слот подготовки с этим заклинанием не потрачен; counted (спонтанные, гибкие) — есть слот ранга; сигнатурное заклинание — в слоте любого ранга от базового.
- * -> [{id: "entry:spell:rank:slot", entry, spell, rank, slot, label}]
- */
-export function blockOptions(entries, label = (e, s, r) => `${e.name}: ${s.name} (${r})`) {
-  const out = [], add = (e, s, rank, slot) => out.push({ id: `${e.id}:${s.id}:${rank}:${slot ?? ""}`, entry: e.id, spell: s.id, rank, slot, label: label(e, s, rank) });
-  for (const e of entries) {
-    const spells = e.spells.filter((s) => SPELLS.has(s.slug));
-    for (const [rank, slots] of Object.entries(e.slots ?? {})) {
-      if (!slots?.max) continue;
-      if (e.mode === "prepared") slots.prepared?.forEach((p, i) => { const s = p?.id && !p.expended && spells.find((x) => x.id === p.id); if (s) add(e, s, +rank, i); });
-      else if (slots.value > 0) for (const s of spells) if (s.signature ? +rank >= s.base : +rank === s.base) add(e, s, +rank, null);
-    }
-  }
-  return out;
-}
+/** Чистая: варианты траты Лечения/Вреда (общая логика ячеек — slots.mjs). -> [{id: "entry:spell:rank:slot", entry, spell, rank, slot, label}] */
+export const blockOptions = (entries, label) => slotOptions(entries, label, { want: (s) => SPELLS.has(s.slug) });
 
 /** Чистая: щит в attributes.shield — настоящий предмет-щит (не эффект щита-заклинания: тот заканчивается блоком и твёрдости от Проводящего блока не получает). */
 export const realShield = (actor) => actor?.items?.get(actor.attributes?.shield?.itemId)?.type === "shield";
-
-/** Чистая: по одному варианту на пару «заклинание + ранг» (одинаковые подготовленные слоты не множим). */
-export const uniqueOptions = (opts) => opts.filter((o, i) => opts.findIndex((x) => x.spell === o.spell && x.rank === o.rank && x.entry === o.entry) === i);
-
-/** Данные колдовства актёра -> входные данные blockOptions. Врождённое и очки фокуса не тратят слот — пропуск. */
-export const entriesOf = (actor) => (actor?.itemTypes?.spellcastingEntry ?? []).filter((e) => e.spells && !e.isInnate && !e.isFocusPool && !e.isRitual).map((e) => ({
-  id: e.id, name: e.name, mode: e.isPrepared && !e.isFlexible ? "prepared" : "counted",
-  slots: Object.fromEntries([...Array(10)].map((_, i) => [i + 1, e.system.slots?.[`slot${i + 1}`]])),
-  spells: [...e.spells].map((s) => ({ id: s.id, slug: s.slug, name: s.name, base: s.system.location?.heightenedLevel ?? s.rank, signature: !!s.system.location?.signature }))
-}));
 
 /** Варианты актёра: есть черта, настоящий щит и слот. */
 export function optionsOf(actor) {
@@ -55,7 +33,9 @@ export const buttons = (actor) => optionsOf(actor).map((o) => cardButton(`data-a
  */
 export async function begin(actor, key, cb) {
   const o = optionsOf(actor).find((x) => x.id === cb);
-  if (!o || !await actor.spellcasting.get(o.entry)?.consume(actor.items.get(o.spell), o.rank, o.slot ?? undefined)) return null;
+  let paid = false;
+  try { paid = !!o && !!await actor.spellcasting.get(o.entry)?.consume(actor.items.get(o.spell), o.rank, o.slot ?? undefined); } catch (e) { console.warn(`${MOD} | channeling-block.consume`, e); }   // consume бросает ErrorPF2e (нет подходящего слота) — блок идёт без траты
+  if (!paid) return null;
   const src = (await fromUuid(EFFECT))?.toObject();
   if (!src) return null;
   delete src._id;

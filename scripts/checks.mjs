@@ -6,6 +6,7 @@ import { useOf, safeUuid, marker, isPcActor, challengeOf, challengeTargets, reco
 import { applyEffect } from "./apply.mjs";
 import { isHeld, isCounterGate } from "./hold.mjs";
 import { effectSource, addEffect, ask } from "./builtin/lib.mjs";
+import { flatStatistic } from "./cast.mjs";
 
 const rolling = new Set();
 
@@ -86,7 +87,8 @@ export async function rollCheck(author, check, ctx = {}) {
   if (hasImmunity(tActor, check.immunity, author.uuid)) { ui.notifications.info(L("checks.immuneNote", { name: tActor.name })); return null; }
   const dc = checkDcOf(use, tActor, check);
   if (dc == null) { ui.notifications.warn(L("checks.dcUnknown", { name: tActor.name })); return null; }
-  const stat = pickStatistic(author, check.statistic);
+  // mod — плоский модификатор записи (контрзаклинание); entry — запись колдовства, из которой потрачена ячейка: её counteraction, а не лучшая из записей актёра
+  const stat = check.mod != null ? flatStatistic(author, check.mod, check.label) : (check.entry && author.spellcasting?.get?.(check.entry)?.counteraction) || pickStatistic(author, check.statistic);
   if (!stat) { ui.notifications.warn(L("saves.noStatistic", { name: author.name, stat: [check.statistic].flat().join("/") })); return null; }
 
   const item = await safeUuid(use?.item?.uuid);

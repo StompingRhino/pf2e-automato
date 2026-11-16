@@ -118,7 +118,9 @@ const worldActors = () => [...new Set([...(game.actors?.contents ?? []), ...(gam
 export async function onDeleteMessage(message) {
   if (!guardActiveGM() || !message?.actor || !isSustained(message.item)) return;
   const anchor = findAnchor(message.actor, anchorKey(message.id));
-  if (anchor) await queue(`actor:${message.actor.uuid}`, () => anchor.delete());
+  if (!anchor || orphaned(message.actor)) return;   // токен/сцена уже удалены (сцену убирают сразу за сообщением): в базе якоря нет, удаление упадёт
+  try { await queue(`actor:${message.actor.uuid}`, () => anchor.delete()); }
+  catch (e) { if (!/does not exist/i.test(e?.message ?? "")) throw e; }   // сцену удалили в ходе самого удаления (клиент ещё видит токен, сервер — уже нет)
 }
 
 /** Откат: у якоря не осталось живых привязок — якорь удаляется как откат (без «конца заклинания»). */

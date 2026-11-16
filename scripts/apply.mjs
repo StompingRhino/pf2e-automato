@@ -477,13 +477,13 @@ export function applyEffect(actor, spec /* {uuid, badge?} */, meta = {}, ctx = {
  *  selection пишется в источник — pf2e при создании берёт её без запроса. false — отказ. */
 const PICK_MS = 120000;
 /** Окно выбора одного из choices [{value, label}]: у игрока-автора (user) или общее окно ведущего. -> value | null (закрыто, тайм-аут PICK_MS — очередь актёра ждёт ответа). */
-export async function askChoice(user, title, prompt, choices) {
+export async function askChoice(user, title, prompt, choices, ms = PICK_MS) {
   const ask = user
-    ? socket.executeAsUser("pickChoice", user.id, { title, prompt, choices: choices.map((c) => ({ value: c.value, label: c.label })) })
-    : sharedDialog({ title, content: choiceHtml(prompt, choices), buttons: [{ action: "ok", label: L("apply.choose") }] })
+    ? socket.executeAsUser("pickChoice", user.id, { title, prompt, ms, choices: choices.map((c) => ({ value: c.value, label: c.label })) })
+    : sharedDialog({ title, content: choiceHtml(prompt, choices), ms, buttons: [{ action: "ok", label: L("apply.choose") }] })
       .then((r) => (r?.form ? choices[Number(r.form.choice)]?.value ?? null : null));
   let timer;
-  try { return await Promise.race([ask, new Promise((r) => { timer = setTimeout(() => r(null), PICK_MS); })]); } finally { clearTimeout(timer); }
+  try { return await Promise.race([ask, new Promise((r) => { timer = setTimeout(() => r(null), ms); })]); } finally { clearTimeout(timer); }
 }
 
 async function chooseChoices(actor, data, user) {
@@ -509,11 +509,12 @@ const choiceHtml = (prompt, choices) => {
   return `${prompt ? `<p>${esc(prompt)}</p>` : ""}<select name="choice">${choices.map((c, i) => `<option value="${i}">${esc(c.label)}</option>`).join("")}</select>`;
 };
 
-export async function pickChoice({ title, prompt, choices }) {
+export async function pickChoice({ title, prompt, choices, ms = 0 }) {
   if (!game.users.get(this?.socketdata?.userId)?.isGM) return null;
   const res = await foundry.applications.api.DialogV2.wait({
     window: { title }, classes: ["paf-dialog"], rejectClose: false,
     content: choiceHtml(prompt, choices),
+    render: (_e, dlg) => { if (ms > 0) setTimeout(() => dlg.close(), ms); },   // таймаут askChoice: окно не должно висеть с мёртвым ответом
     buttons: [{ action: "ok", label: L("apply.choose"), default: true, callback: (_e, b) => Number(b.form.elements.choice.value) }]
   });
   return Number.isInteger(res) ? choices[res]?.value ?? null : null;
@@ -596,7 +597,7 @@ export async function applyOps(message, tokenKey, steps, ctx = {}) {
     if (doneOps.some((o) => o.key === key)) continue;
     if (step.when && !whenPasses(step.when, new Set([...(wopts ??= await whenOptions({ use, message, selfActor, targetDoc, originItem, degree: ctx.degree, rollOptions: ctx.rollOptions })), ...picks.opts]))) continue;
     ops.push({ op: "noted", key });
-    const who = tokenKey !== "self" && targetDoc?.name ? `<b>${esc(targetDoc.name)}</b>: ` : "";
+    const who = tokenKey !== "self" && !(use.state?.counter && step.to === "self") && targetDoc?.name ? `<b>${esc(targetDoc.name)}</b>: ` : "";
     await ChatMessage.create({ whisper: ChatMessage.getWhisperRecipients("GM").map((u) => u.id), speaker: { alias: "pf2e-automato" }, content: card(who + esc(step.note), "", { title: esc(use.item?.name ?? use.rule?.label ?? ""), icon: "fa-note-sticky" }) });
   }
 
@@ -819,6 +820,32 @@ async function holdStep(kind, message, use, ctx, at, doneOps) {
   return out;
 }
 
+/**
+ * Откат одной траты из журнала: реакция (карточку трекера откатом не вернуть) и ячейка заклинания (counter.expend) возвращаются как были, но только если
+ * состояние всё ещё наше — иначе его изменили позже. -> true, если вернули. Зовёт undoOps и отказ events.spend после уже списанной ячейки.
+ */
+export async function undoSpent(o) {
+  const a = actorOf(await fromUuid(o.actor));
+  if (!a) return false;
+  if (o.op === "reactionSpent") {
+    const cur = a.getFlag(MOD, "reactionSpent");
+    if (o.set && !(cur?.combat === o.set.combat && cur?.round === o.set.round)) return false;
+    await (o.prev ? a.setFlag(MOD, "reactionSpent", o.prev) : a.unsetFlag(MOD, "reactionSpent"));
+    return true;
+  }
+  if (o.op !== "slotExpended") return false;
+  const e = a.spellcasting?.get(o.entry), slots = e?.system?.slots?.[`slot${o.rank}`];
+  if (!slots) return false;
+  if (o.slot != null) {   // подготовленное: снова не потрачено, если слот всё ещё потрачен
+    if (!slots.prepared?.[o.slot]?.expended) return false;
+    await e.spells.setSlotExpendedState(o.rank, o.slot, false);   // у записи метод не ждёт update; у коллекции возвращает promise
+    return true;
+  }
+  if (slots.value !== o.prev - 1) return false;   // счётчик: возвращаем, только если после нас его не трогали
+  await e.update({ [`system.slots.slot${o.rank}.value`]: o.prev });
+  return true;
+}
+
 /** Откат записанного в ops: созданное удаляется, поднятое возвращается к prev; затем запись state чистится. */
 export async function undoOps(message, tokenKey) {
   const state = message.flags?.[MOD]?.use?.state ?? {};
@@ -829,12 +856,7 @@ export async function undoOps(message, tokenKey) {
     if (!rec) continue;
     for (const o of [...(rec.ops ?? [])].reverse()) {
       if (o.op === "anchor") continue;   // сам якорь убирает prune после цикла: только когда привязок не осталось
-      if (o.op === "reactionSpent") {   // реакция возвращается как была; карточку трекера откатом не вернуть
-        const a = actorOf(await fromUuid(o.actor));
-        const cur = a?.getFlag(MOD, "reactionSpent");   // возвращаем, только если флаг всё ещё наш: иначе его поставили позже
-        if (a && (!o.set || (cur?.combat === o.set.combat && cur?.round === o.set.round))) { await (o.prev ? a.setFlag(MOD, "reactionSpent", o.prev) : a.unsetFlag(MOD, "reactionSpent")); undone++; }
-        continue;
-      }
+      if (o.op === "reactionSpent" || o.op === "slotExpended") { if (await undoSpent(o)) undone++; continue; }
       if (o.op === "hold") { if (o.prev) await hold.restore(game.messages.get(o.msg), o.prev); continue; }   // атака снова ждёт: карточку можно применить заново
       if ((o.op === "vis" && o.skipped) || o.op === "chose" || o.op === "damaged" || o.op === "noted" || (o.op === "moved" && o.skipped)) continue;   // выбор отменять нечем; урон pf2e откатывает своей карточкой
       if (o.op === "moved") {   // позиция возвращается, только если токен всё ещё там, куда его сдвинули

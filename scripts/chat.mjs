@@ -259,11 +259,11 @@ export function buildViewModel(message, user, env = null) {
         applied: ap && seen ? t("chat.applied", { degree: t(`chat.degree.${DEGREES[ap.degree]}`) }) : null,
         plan,
         canRoll: !r && !immune && modeChallenge !== "off" && !(modeChallenge === "auto" && !state.challenge?.rollTried?.[key] && (ck ? env.isActorPc && !env.isActorPc(use.actor) : env.isPc && !env.isPc(key, use))) && ck?.roll !== "system" && (ck ? (isGM || env.isActorOwner(use.actor, user)) : !env.toolbelt && (isGM || env.isOwner(key, use, user))),
-        canApply: isGM && !!r && !ap && !immune && (steps.some((a) => isActiveStep({ ...a, visibility: a.visibility && env.vision?.() !== false })) || !!imm) && (modeApply === "button" || (modeApply === "auto" && (!!state.challenge?.autoTried?.[key] || deferred))),   // auto применяет сам; после попытки (сбой, «Отменить») кнопка возвращается
+        canApply: isGM && !!r && !ap && !immune && !state.counter?.reverted && (steps.some((a) => isActiveStep({ ...a, visibility: a.visibility && env.vision?.() !== false })) || !!imm) && (modeApply === "button" || (modeApply === "auto" && (!!state.challenge?.autoTried?.[key] || deferred))),   // auto применяет сам; после попытки (сбой, «Отменить») кнопка возвращается
         canUndo: isGM && !!ap,
         waiting: !r && !immune,
         // применять больше нечего: иммунная цель отработана без броска; при apply=off применение не требуем
-        settled: immune || (!!r && (!!ap || modeApply === "off" || !(steps.some((a) => isActiveStep({ ...a, visibility: a.visibility && env.vision?.() !== false })) || !!imm)))
+        settled: immune || !!state.counter?.reverted || (!!r && (!!ap || modeApply === "off" || !(steps.some((a) => isActiveStep({ ...a, visibility: a.visibility && env.vision?.() !== false })) || !!imm)))
       };
     });
     const dcKnown = ck || !showDc ? null : use.dc ?? ch.dc?.value ?? null;

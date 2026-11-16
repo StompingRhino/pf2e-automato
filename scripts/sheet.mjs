@@ -183,7 +183,7 @@ export const blankEvent = () => ({ on: "attack-roll", side: "self", when: "", on
 export const HP0 = "hp0", HP0_OPT = "damage-taken:hp0";
 const isHp0 = (e) => e.on === "damage-taken" && (e.side ?? "self") === "self" && Array.isArray(e.when) && e.when.includes(HP0_OPT);
 const evForm = (e) => ({ on: isHp0(e) ? HP0 : e.on, side: e.side ?? "self", when: whenText(isHp0(e) ? e.when.filter((x) => x !== HP0_OPT) : e.when), use: !!e.use, hold: !!e.hold, once: !!e.once, afterUse: !!e.afterUse, cost: e.cost === "reaction", free: whenText(e.free), aura: e.aura ?? "", range: e.range ?? "", per: e.per ?? "", apply: (e.apply ?? []).map(rowOf), ch: { ...chForm(e.challenge), on: !!e.challenge }, check: e.check, counter: e.counter });   // counter (контрзаклинание) — как check: Мастерская не правит; check (Lingering Composition, Ты следующий) Мастерская не правит: едет в форме как есть
-const nearZone = (e) => ({ ...(String(e.aura ?? "").trim() && { aura: String(e.aura).trim() }), ...(num(e.range) !== undefined && { range: num(e.range) }), ...(e.per && { per: e.per }) });
+const nearZone = (e) => ({ ...(String(e.aura ?? "").trim() && { aura: String(e.aura).trim() }), ...(String(e.range).trim() === "any" ? { range: "any" } : num(e.range) !== undefined && { range: num(e.range) }), ...(e.per && { per: e.per }) });
 function evRule(e) {
   let when = parseWhen(e.when);
   const hp0 = e.on === HP0, free = e.cost ? parseWhen(e.free) : undefined;

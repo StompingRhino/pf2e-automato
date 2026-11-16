@@ -26,7 +26,7 @@ export const auraOf = (token, slug) => (token?.auras ?? token?.object?.auras)?.g
 
 /** Радиус записи near в футах: range, либо radius ауры pf2e с этим slug у токена владельца (нет такой ауры — null: запись не действует). */
 export function nearRadius(entry, token) {
-  if (entry.range != null) return entry.range;
+  if (entry.range != null) return entry.range === "any" ? Infinity : entry.range;   // "any" — запись counter без ограничения дальности (стены остаются)
   const aura = auraOf(token, entry.aura);
   return Number.isFinite(aura?.radius) ? aura.radius : null;
 }

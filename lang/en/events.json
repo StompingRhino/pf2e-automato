@@ -8,6 +8,27 @@
       "zone": "\"{item}\": {target} is in the area and must attempt a challenge.",
       "affliction": "\"{item}\": {target} attempts the affliction save.",
       "pick": "\"{item}\": {target} - a reaction check against the chosen target.",
+      "counter": {
+        "prompt": "\"{item}\": counter \"{spell}\" ({caster}, rank {rank})? Spends the reaction.",
+        "trigger": "Ability condition: {text}",
+        "use": "Counter the spell",
+        "expends": "Will expend: {what}.",
+        "choose": "Choose what to expend.",
+        "pick": "{what}",
+        "payPrepared": "prepared spell \"{spell}\" (rank {rank}, {entry})",
+        "paySlot": "rank {rank} spell slot ({entry})",
+        "noSlot": "\"{item}\": no suitable spell slot is left, the reaction was not spent.",
+        "noEntry": "\"{name}\" cannot counter spells: the actor has no spellcasting entry, and the counteract check is taken from it. Add a spellcasting entry or set a flat modifier (mod) in the rule.",
+        "rerollYes": "\"{item}\": after the reroll (result {total}) \"{spell}\" is now countered, but the cast was already resolved otherwise. Press Cancel on the cast card.",
+        "rerollNo": "\"{item}\": after the reroll (result {total}) \"{spell}\" is now not countered, but the cast was already resolved otherwise. Press Restore on the cast card.",
+        "rerollLate": "\"{item}\": after the reroll (result {total}) \"{spell}\" would be countered, but it has already taken effect. Undo its effects manually.",
+        "revertDamage": "\"{item}\": \"{spell}\" was restored, but the damage from the counter has already been dealt. Revert it with the pf2e button on the damage card.",
+        "host": "\"{item}\": {target} tries to counter \"{spell}\" ({caster}): counteract check, counteract rank {counterRank} against rank {rank}.",
+        "resultDetail": "result {total}{dc}, {degree}; counteract rank {counterRank} against rank {rank}: ",
+        "resultDc": " against DC {dc}",
+        "resultYes": "\"{item}\": {detail}\"{spell}\" is countered.",
+        "resultNo": "\"{item}\": {detail}\"{spell}\" is not countered."
+      },
       "reaction": { "prompt": "\"{item}\": use the reaction?", "use": "Use the reaction", "promptFree": "\"{item}\": apply (no reaction spent)?", "useFree": "Apply" },
       "linger": "\"{item}\": {target} attempts a check; the DC is set by the highest-level creature of the composition: allies in its area or its targets, {n} creature(s) (for compositions aimed at enemies, e.g. Dirge of Doom, allies count). The GM may change the DC."
     },
@@ -18,7 +39,8 @@
       "cancel": "Cancel",
       "restore": "Restore",
       "counterWaiting": "The casting is held: a counterspell is being decided. The spell's effect is not running yet, the buttons are hidden.",
-      "counterCancelled": "The casting was countered: its effect does not run. The cost of casting is spent."
+      "counterCancelled": "The casting was countered: its effect does not run. The cost of casting is spent.",
+      "counterCancelledBy": "Countered: {item} ({actor}). The spell's effect does not run, the cost of casting is spent."
     },
     "rules": {
       "err": {
@@ -37,7 +59,7 @@
           "afterUse": "\"After use\" is yes or no, and only for the owner's own roll (attack, check, save, damage) ({path})",
           "check": "A check exists for spell casting with \"after use\" (level DC) or for \"damage taken\" with a choose step (against a defense); not together with a challenge ({path})",
           "cost": "\"Reaction\" is only reaction; the choose step, if any, comes first ({path})",
-          "counter": "Counterspell: only for \"spell cast\" on the \"in the owner's aura\" side with a reaction; needs mod (integer) or statistic, and rank 1-10 or {half: \"actor\"}; expend is same-spell or same-rank ({path})",
+          "counter": "Counterspell: only for \"spell cast\" on the \"in the owner's aura\" side (reach is a number or \"any\": anywhere on the scene) with a reaction; without expend it needs exactly one of mod (integer) or statistic (a slug or 2-4 slugs), and rank 1-10 or {half: \"actor\"}; expend (the slot to spend) is {from?: \"prepared\"|\"slot\", spell: \"same\"|\"any\"|{slug}|{trait}, rank?: \"same\"|\"min\"}, with it rank and the check are optional (the slot's rank and the counteract of its spellcasting entry are used); consequence steps go in onCounter/onFail (recipient self or target, no choose, move or hold), immunity needs a slug and a duration without degrees; apply, use, challenge, check are not supported ({path})",
           "free": "\"Free if\" is a predicate and only together with a reaction ({path})",
           "checkDc": "The check DC is {ofTargets: \"level\"} only ({path})",
           "hold": "\"Hold\" is only true, only for the roll target's attack or a check ({path})",

@@ -31,7 +31,8 @@ export const pairOf = (m) => `${m?.actor?.uuid ?? m?.speaker?.actor ?? ""}>${m?.
 
 const feed = () => game.messages.contents;
 /** Карточка испытания удержанной атаки (events.hostChallenge: use.state.event = `<id атаки>:<носитель>:<i>`). */
-export const hostOf = (m) => feed().find((h) => String(h.flags?.[MOD]?.use?.state?.event ?? "").startsWith(`${m.id}:`)) ?? null;
+// Карточка контрзаклинания с исходом (state.counter.done) — след для ГМа, а не ожидаемая проверка: следующий кандидат создаёт новую.
+export const hostOf = (m) => feed().find((h) => String(h.flags?.[MOD]?.use?.state?.event ?? "").startsWith(`${m.id}:`) && !h.flags?.[MOD]?.use?.state?.counter?.done) ?? null;
 /** Карточка не разрешена: её шаги ещё не применены (бросок Воли мог уже пройти — apply=button ждёт «Применить»). */
 const pending = (h) => !Object.keys(h.flags?.[MOD]?.use?.state?.challenge?.applied ?? {}).length;
 /** У другой удержанной атаки этой пары уже есть неразрешённая карточка — вторая карточка не нужна, разрешение первой касается обеих. */
@@ -51,22 +52,40 @@ async function dropInstantRegions(message) {
   } catch (e) { console.warn(`${MOD} | hold.dropRegions`, e); }
 }
 
+/** Карточка pf2e без блока кнопок (section|div .card-buttons со вложенными блоками): сорванное сотворение нечем доигрывать вручную. */
+export function stripButtons(html) {
+  const s = String(html ?? ""), start = /<(section|div)\b[^>]*\bclass="[^"]*\bcard-buttons\b[^"]*"[^>]*>/.exec(s);
+  if (!start) return s;
+  const re = new RegExp(`<(/?)${start[1]}\\b[^>]*>`, "g");
+  re.lastIndex = start.index + start[0].length;
+  for (let depth = 1, t; (t = re.exec(s));) {
+    depth += t[1] ? -1 : 1;
+    if (!depth) return stripButtons(s.slice(0, start.index) + s.slice(re.lastIndex));
+  }
+  return s;
+}
+
 /**
  * Разрешить удержание: release (выпустить, затем replay) | cancel (атака отменена, кнопки урона скрыты). Касается всех удержанных атак пары;
- * висящие карточки остальных удаляются. -> { prev } состояния данной атаки для отката | null (не удержана)
+ * висящие карточки остальных удаляются. by — кто сорвал сотворение ({item, actor}, для плашки). -> { prev } состояния данной атаки для отката | null (не удержана)
  */
-export async function resolve(message, how, { wait = true } = {}) {
+export async function resolve(message, how, { wait = true, by = null } = {}) {
   const counter = isCounterGate(message);
   if (!isHeld(message) && !(counter && how !== "cancel")) return null;   // сорванное контрзаклинанием выпускается кнопкой «Вернуть»
   const pair = pairOf(message), reroll = isRerollHold(message);
   // удержание переброса и контрзаклинания — одно сообщение; Святилище — вся пара. Группы разных причин друг друга не выпускают
   const group = reroll || counter ? [message] : feed().filter((m) => isSanctuaryHold(m) && pairOf(m) === pair);
   const prev = { hold: gateOf(message).hold, cancelled: isCancelled(message) };
-  const patch = how === "cancel" ? { hold: false, cancelled: true, ...(counter && { counter: true }) } : { hold: false, replayed: true, ...(counter && { cancelled: false }) };
+  const patch = how === "cancel" ? { hold: false, cancelled: true, ...(counter && { counter: true, by }) } : { hold: false, replayed: true, ...(counter && { cancelled: false, by: null }) };
   // сбой update одной атаки (удалена переброском) остальных не обрывает; replayed — выпуск необратим (restore не возвращает удержание)
   if (counter) clearTimeout(counterTimers.get(message.id));
   for (const m of group) await m.update({ [flagPath("gate")]: patch }).catch((e) => console.warn(`${MOD} | hold.resolve`, e));
-  if (counter && how === "cancel") await dropInstantRegions(message);
+  if (counter && how === "cancel") {
+    await dropInstantRegions(message);
+    // сорвано: кнопок pf2e (урон, область, спасбросок) на карточке не остаётся; оригинал — во флаге, «Вернуть» его восстановит
+    const bare = stripButtons(message.content);
+    if (message.content && bare !== message.content) await message.update({ content: bare, [flagPath("counterContent")]: message.content }).catch((e) => console.warn(`${MOD} | hold.strip`, e));
+  } else if (counter && message.flags?.[MOD]?.counterContent) await message.update({ content: message.flags[MOD].counterContent, [flagPath("counterContent")]: null }).catch((e) => console.warn(`${MOD} | hold.unstrip`, e));
   for (const m of group) {
     const h = m.id === message.id ? null : hostOf(m);
     if (h && pending(h)) await h.delete().catch(() => {});
@@ -77,12 +96,14 @@ export async function resolve(message, how, { wait = true } = {}) {
 }
 
 /** Ручная кнопка ГМа (damage-gate, сокет holdResolve): выпустить или отменить, не дожидаясь карточки. Карточка испытания, если есть, удаляется. */
-export async function resolveManual(id, how) {
+export async function resolveManual(id, how, by = null) {
   const m = game.messages.get(id);
   if (!m || !(isHeld(m) || isCounterGate(m))) return null;
   return queue(gateKey(m), async () => {
-    const h = hostOf(m), r = await resolve(m, how === "cancel" ? "cancel" : "release");
+    const h = hostOf(m), undo = how !== "cancel" && isCancelled(m) && gateOf(m)?.counter === true, r = await resolve(m, how === "cancel" ? "cancel" : "release", { by });
     if (h && pending(h)) await h.delete().catch(() => {});
+    // «Вернуть» сорванное: срыв отменён — последствия (состояние, урон-эффект, иммунитет заклинателю) снимаются штатным откатом применения
+    if (undo && r) await (await import("./counterspell.mjs")).revert(m.id).catch((e) => console.warn(`${MOD} | hold.revert`, e));
     return r;
   });
 }
@@ -143,7 +164,7 @@ export async function settledDegree(msg, degree, { ms = HOLD_WAIT_MS, step = 250
 
 /** Страховка зависания: ГМ закрыл/удалил карточку испытания, не применив её, — атака выпускается. */
 export async function onDeleteHost(card) {
-  if (!isActiveGM()) return;
+  if (!isActiveGM() || card.flags?.[MOD]?.use?.state?.counter?.done) return;   // решённая проверка контрзаклинания — след для ГМа, её удаление сотворение не выпускает
   const id = String(card.flags?.[MOD]?.use?.state?.event ?? "").split(":")[0], m = id ? game.messages.get(id) : null;
   if (m && (isSanctuaryHold(m) || isCounterHold(m)) && !hostOf(m)) await queue(gateKey(m), () => resolve(m, "release"));
 }
@@ -152,8 +173,14 @@ export async function onDeleteHost(card) {
 // Старше resumeMinutes (как resumePending) — не выпускается и не исполняется: hold снимается без replay, старое заклинание молчит.
 export const COUNTER_STUCK_MS = 60_000;   // окно решения 30 с + бросок
 const counterTimers = new Map();
+const applying = new Set();
+/** Исход проверки обрабатывается (запись done, применение последствий, срыв/следующий кандидат; урон с анимацией — секунды): hostOf уже не видит решённую карточку, поэтому ожидание помечается явно. */
+export async function whileApplying(id, fn) {
+  applying.add(id);
+  try { return await fn(); } finally { applying.delete(id); }
+}
 /** Карточка проверки контрзаклинания ждёт броска/«Применить»: её исход сам выпустит или отменит сотворение (шаг hold, onDeleteHost) — страховка не вмешивается. */
-const waitsHost = (m) => { const h = hostOf(m); return !!h && pending(h); };
+const waitsHost = (m) => applying.has(m.id) || (() => { const h = hostOf(m); return !!h && pending(h); })();
 async function releaseStuck(id) {
   const c = game.messages.get(id);
   if (c && isCounterHold(c) && isActiveGM() && !waitsHost(c)) await queue(gateKey(c), () => resolve(c, "release"));

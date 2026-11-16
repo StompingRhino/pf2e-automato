@@ -55,17 +55,18 @@ const workbench = () => {
  */
 export function holdPlaque(message) {
   const counter = isCounterGate(message), held = counter ? isCounterHold(message) : isSanctuaryHold(message);
-  const text = counter ? (held ? "hold.counterWaiting" : "hold.counterCancelled") : held ? "hold.waiting" : "hold.cancelled";
-  return { text, buttons: held ? ["release", "cancel"] : counter ? ["release"] : [] };
+  const by = counter && !held ? message.flags?.[MOD]?.gate?.by : null;   // кто сорвал: «Сорвано: {item} ({actor})»
+  const text = counter ? (held ? "hold.counterWaiting" : by ? "hold.counterCancelledBy" : "hold.counterCancelled") : held ? "hold.waiting" : "hold.cancelled";
+  return { text, buttons: held ? ["release", "cancel"] : counter ? ["release"] : [], ...(by && { vars: { item: by.item, actor: by.actor } }) };
 }
 
 function holdBlock(message, html) {
   const box = html.querySelector(".message-content");
   if (!box || box.querySelector(".paf-hold")) return;
-  const { text, buttons } = holdPlaque(message);
+  const { text, buttons, vars } = holdPlaque(message);
   const el = document.createElement("div");
   el.className = "paf-hold";
-  el.innerHTML = `<p>${L(text)}</p>${buttons.length && game.user?.isGM ? `<div class="paf-card-actions">${buttons.map((b) => `<button type="button" data-hold="${b}">${L(b === "release" && !isCounterHold(message) && isCounterGate(message) ? "hold.restore" : `hold.${b}`)}</button>`).join("")}</div>` : ""}`;
+  el.innerHTML = `<p>${L(text, vars && Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, foundry.utils.escapeHTML(String(v ?? ""))])))}</p>${buttons.length && game.user?.isGM ? `<div class="paf-card-actions">${buttons.map((b) => `<button type="button" data-hold="${b}">${L(b === "release" && !isCounterHold(message) && isCounterGate(message) ? "hold.restore" : `hold.${b}`)}</button>`).join("")}</div>` : ""}`;
   for (const b of el.querySelectorAll("[data-hold]")) b.addEventListener("click", (ev) => { ev.preventDefault(); b.disabled = true; callGM("holdResolve", message.id, b.dataset.hold); });
   box.append(el);
 }

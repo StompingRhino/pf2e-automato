@@ -5,7 +5,7 @@ import { resolveRule, slugOf, sourceOf } from "./rules.mjs";
 import { runMacros } from "./macros.mjs";
 import { buildReactionViewModel, buildDamagedViewModel } from "./chat.mjs";
 import { noReactions } from "./inline-effect.mjs";
-import { combatOf } from "./builtin/lib.mjs";
+import { combatOf, ownerQueue } from "./builtin/lib.mjs";
 
 const clamp = (n) => Math.min(3, Math.max(0, n));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -219,7 +219,7 @@ export async function spendReaction(actor, item) {
 }
 
 export function useReaction(hintMessageId) {
-  return queue(`reaction-owner:${hintOf(game.messages.get(hintMessageId))?.actor}`, async () => {   // общая с Блоком щитом и damaged: одна реакция владельца
+  return ownerQueue(hintOf(game.messages.get(hintMessageId))?.actor, async () => {   // общая с Блоком щитом, damaged и контрзаклинанием (events.runEntry): одна реакция владельца
     const msg = game.messages.get(hintMessageId);
     const h = hintOf(msg);
     if (!h) return { ok: false, reason: "no-hint" };

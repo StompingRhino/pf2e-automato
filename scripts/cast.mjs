@@ -152,6 +152,12 @@ const classDcOf = (actor) => { try { return actor.getStatistic?.("class-spell")?
 // кантрип ли заклинание: по индексу пака (поле traits запрашивает ready()); индекса нет — не кантрип (СЛ предмета, не завышаем)
 const isCantrip = (uuid) => { try { return !!fromUuidSync(uuid)?.system?.traits?.value?.includes("cantrip"); } catch { return false; } };
 
+/** Проверка противодействия с плоским модификатором (ни атрибута, ни ранга записи): активации «вы сотворяете X» и реакция-контрзаклинание. */
+export function flatStatistic(actor, value, label = L("cast.entry")) {
+  const Statistic = Object.getPrototypeOf(actor.perception.constructor), { Modifier } = game.pf2e;
+  return new Statistic(actor, { slug: "counteract", label: "PF2E.Item.Spell.Counteract.Label", check: { type: "check", modifiers: [new Modifier({ slug: "af-cast", label, modifier: value, type: "untyped" })] } });
+}
+
 function buildEntry(actor, id, c, item) {
   const best = bestEntry(actor), high = !!c.dc?.level;
   const pick = pickDc(c, { itemLevel: item?.level, heartCantrip: !!item?.system?.traits?.value?.includes("spellheart") && isCantrip(c.spell), bestDc: best?.statistic.dc.value, classDc: classDcOf(actor) });
@@ -167,7 +173,7 @@ function buildEntry(actor, id, c, item) {
     dc: { modifiers: [mod(dc - 10)], domains: ["spell-dc"] }
   });
   // createCounteractStatistic у pf2e внутренняя (берёт атрибут и ранг записи): собираем равную по модификатору без них
-  const counteraction = new Statistic(actor, { slug: "counteract", label: "PF2E.Item.Spell.Counteract.Label", check: { type: "check", modifiers: [mod(c.counteract ?? c.attack ?? (high ? dc - 8 : dc - 10))] } });
+  const counteraction = flatStatistic(actor, c.counteract ?? c.attack ?? (high ? dc - 8 : dc - 10));
   return { ...common, statistic, counteraction, tradition: null, attribute: null };
 }
 

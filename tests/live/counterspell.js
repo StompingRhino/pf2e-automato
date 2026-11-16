@@ -1,5 +1,7 @@
 async () => {
-  // Живые сценарии удержания сотворения (M4, шаг 2: hold.mjs, причина "counter") БЕЗ диспетчера: флаг ставится вручную через api.markCounterHold на карточку сотворения.
+  // Живые сценарии контрзаклинания (M4). Первые пять (fireball-release … use-apply) — удержание hold.mjs БЕЗ диспетчера: флаг ставится вручную через api.markCounterHold (gate.manual: диспетчер такую карточку не трогает).
+  // counter-* — диспетчер целиком (шаги 3–4): реактор-NPC с записью counter, окно ведущему (e.answers), бросок, срыв / выпуск / «Вернуть».
+  // counter-slot-* — трата ячейки (M4.9, counter.expend): NPC-контрзаклинатель с записью колдовства, проверка слота/журнала slotExpended, «Вернуть» ячейку не возвращает.
   // Ожидание: пока удержано — эффект не исполняется (нет регионов/целей/спасбросков/урона), кнопки скрыты, плашка с «Выпустить»/«Отменить»;
   // «Выпустить» — исполняется ровно один раз; «Отменить» — ничего, кнопки скрыты; «Вернуть» после отмены = выпуск.
   // Копии «AF тест: …» и сцена создаются и удаляются сценарием. Параметры: window.__afCS = { only, skip, cleanOnly }. Результат — window.__afCSResult.
@@ -32,7 +34,7 @@ async () => {
     const sceneIds = new Set(scenes.map((s) => s.id));
     const ids = [...new Set([...extraMsgIds, ...game.messages.filter((m) => actorIds.has(m.speaker?.actor) || sceneIds.has(m.speaker?.scene)).map((m) => m.id)])].filter((id) => game.messages.has(id));
     for (const s of scenes) if (s.regions.size) await s.deleteEmbeddedDocuments("Region", s.regions.map((r) => r.id)).catch(() => {});
-    if (ids.length) await ChatMessage.deleteDocuments(ids).catch(() => {});
+    if (ids.length) { await ChatMessage.deleteDocuments(ids).catch(() => {}); await wait(800); }   // снятие якорей Поддержания по удалению сообщений должно уйти до удаления сцены (иначе сервер отвечает «Scene … does not exist»)
     for (const s of scenes) await s.delete().catch(() => {});
     for (const a of game.actors.filter((a) => test(a.name))) await a.delete().catch(() => {});
     return game.actors.filter((a) => test(a.name)).length + game.scenes.filter((s) => test(s.name)).length;
@@ -291,6 +293,369 @@ async () => {
     t.ok(await waitFor(() => cnd() === 1, 10000), `«Вернуть»: испуг 1 (${cnd()})`);
     await wait(3000);
     t.ok(cnd() === 1 && e.A(tA).itemTypes.condition.filter((c) => c.slug === "frightened").length === 1, "ровно один раз");
+  });
+
+  // ---------- диспетчер реакции (M4, шаги 3–4): без ручного удержания, карточку держит сам модуль ----------
+  const counterRule = (counter, extra = {}) => {
+    const rule = { v: 1, onEvent: [{ on: "spell-cast", side: "near", range: 30, cost: "reaction", counter, ...extra }] };
+    const v = api().validateRule(rule);
+    if (!v.ok) throw new Error(`правило невалидно: ${v.errors.map(String).join("; ")}`);
+    return rule;
+  };
+  /** NPC-контрзаклинатель с записью counter (предмет-действие с правилом в флаге) и токеном на сцене. Окно владельцу — NPC, значит ведущему: отвечает e.answers ("0" — принять, "__decline" — отказ). */
+  const reactor = async (e, name, x, y, counter, extra = {}, system = {}) => {   // extra — поля записи (range "any"), system — поля предмета (frequency)
+    const A = await e.foe(name);
+    await e.give(A, { type: "action", name: "AF контрзаклинание", system: { actionType: { value: "reaction" }, description: { value: "<p><strong>Trigger</strong> A creature Casts a Spell.</p>" }, ...system }, flags: { [MOD]: { rule: counterRule(counter, extra) } } });
+    return { A, tok: await e.tok(A, x, y, -1) };
+  };
+  const WIN = { mod: 40, rank: 3 }, LOSE = { mod: -30, rank: 3 };   // d20 зафиксирован на 10: итог 50 — крит. успех, -20 — крит. провал
+  const hosts = (m) => game.messages.contents.filter((x) => String(x.flags?.[MOD]?.use?.state?.event ?? "").startsWith(`${m.id}:`));
+  const settled = (m, n = 1) => hosts(m).filter((h) => h.flags[MOD].use.state.counter?.done).length >= n;
+  const hasButtons = (e, m) => visibleButtons(e, m).length > 0;
+
+  sc("counter-success", "Контрзаклинание: окно -> бросок -> сорвано: кнопок нет, плашка «Сорвано: …», область/спасброски/урон не стартуют, итоговая строка", async (e, t) => {
+    openChat();
+    const { sp, ent, t1 } = await fireballSetup(e);
+    await reactor(e, "контрзаклинатель", 400, 1000, WIN);
+    await wait(900);
+    const t0 = e.since(), hp1 = e.A(t1).hitPoints.value;
+    e.answers.push("0");
+    const m = await castCard(e, ent, sp, 3, false);
+    t.ok(!!m, "карточка сотворения");
+    t.ok(await waitFor(() => e.gate(m).cancelled === true && !e.gate(m).hold, 25000), `сорвано (${JSON.stringify(e.gate(m))})`);
+    const h = hosts(m)[0], st = h?.flags?.[MOD]?.use?.state;
+    t.ok(hosts(m).length === 1 && st?.counter?.done === true && st.counter.degree === 3, `одна карточка проверки с исходом (${JSON.stringify(st?.counter)})`);
+    t.ok(!game.messages.get(m.id).content.includes("card-buttons"), "content без card-buttons");
+    t.ok(!!game.messages.get(m.id).flags[MOD].counterContent, "оригинал content во флаге");
+    t.ok(await waitFor(() => e.dom(m)?.querySelector(".paf-hold")?.textContent.includes("AF контрзаклинание"), 6000), "плашка называет, кто сорвал");
+    t.ok(!hasButtons(e, m), `кнопок нет (${visibleButtons(e, m)})`);
+    t.ok(e.msgs(t0).some((x) => x.speaker?.alias === "AF контрзаклинание" && /сорвано/.test(x.content)), "итоговая строка");
+    await region(e, m, 1300, 1100, 400);
+    await wait(5000);
+    t.ok(!e.use(m)?.state?.area && saveMsgs(e, t0).length === 0 && dmgMsgs(e, t0, sp.uuid).length === 0 && e.A(t1).hitPoints.value === hp1, "область, спасброски и урон не стартуют");
+  });
+
+  sc("counter-fail", "Контрзаклинание: провал проверки -> кандидатов больше нет -> выпуск: заклинание идёт, кнопки на месте, спасброски целей по одному разу", async (e, t) => {
+    openChat();
+    const { sp, ent } = await fireballSetup(e);
+    await reactor(e, "контрзаклинатель", 400, 1000, LOSE);
+    await wait(900);
+    const t0 = e.since();
+    e.answers.push("0");
+    const m = await castCard(e, ent, sp, 3, false);
+    t.ok(await waitFor(() => e.gate(m).replayed === true && !e.gate(m).hold, 25000), `выпущено (${JSON.stringify(e.gate(m))})`);
+    t.ok(!e.gate(m).cancelled && settled(m) && hosts(m)[0].flags[MOD].use.state.counter.degree === 0, "карточка проверки: крит. провал, не сорвано");
+    t.ok(game.messages.get(m.id).content.includes("card-buttons") && await waitFor(() => hasButtons(e, m), 4000), "кнопки pf2e на месте");
+    await region(e, m, 1300, 1100, 400);
+    t.ok(await waitFor(() => Object.keys(e.use(m)?.state?.challenge?.results ?? {}).length >= 1, 16000), "спасбросок цели пошёл");
+    await wait(3000);
+    t.ok(saveMsgs(e, t0).length === 2, `спасбросок каждой из двух целей ровно один раз (${saveMsgs(e, t0).length})`);
+  });
+
+  sc("counter-range", "Контрзаклинание: вне 30 фт и за стеной — окна нет, карточка не задерживается", async (e, t) => {
+    openChat();
+    const { sp, ent } = await fireballSetup(e);
+    await reactor(e, "далеко", 2200, 1000, WIN);   // 1600 px = 80 фт
+    await reactor(e, "за стеной", 400, 1000, WIN);
+    await e.scene.createEmbeddedDocuments("Wall", [{ c: [500, 800, 500, 1200], move: CONST.WALL_MOVEMENT_TYPES.NORMAL, sight: 20, light: 20, sound: 20 }]);
+    await wait(900);
+    e.answers.push("0", "0");
+    const m = await castCard(e, ent, sp, 3, false);
+    t.ok(!!m && !e.gate(m).hold && !e.gate(m).cancelled, `не удержана (${JSON.stringify(e.gate(m))})`);
+    await wait(3000);
+    t.ok(e.answers.length === 2 && hosts(m).length === 0, "окон и карточек проверки нет");
+    t.ok(game.messages.get(m.id).content.includes("card-buttons"), "кнопки на месте");
+  });
+
+  sc("counter-chain", "Два контрзаклинателя: ближний проваливает проверку -> дальний; его успех срывает; третьего окна нет", async (e, t) => {
+    openChat();
+    const { sp, ent } = await fireballSetup(e);
+    const r1 = await reactor(e, "ближний", 400, 1000, LOSE), r2 = await reactor(e, "дальний", 200, 1000, WIN);
+    await wait(900);
+    e.answers.push("0", "0");
+    const m = await castCard(e, ent, sp, 3, false);
+    t.ok(await waitFor(() => e.gate(m).cancelled === true && settled(m, 2), 30000), `сорвано после двух проверок (${JSON.stringify(e.gate(m))}, карточек ${hosts(m).length})`);
+    const hs = hosts(m).sort((a, b) => a._stats.createdTime - b._stats.createdTime);
+    t.ok(hs.length === 2, `карточек проверки две (${hs.length})`);
+    t.ok(hs[0]?.flags[MOD].use.state.counter.by.actor === e.T(r1.tok).name && hs[0].flags[MOD].use.state.counter.degree === 0, "первой — ближний, провал");
+    t.ok(hs[1]?.flags[MOD].use.state.counter.by.actor === e.T(r2.tok).name && hs[1].flags[MOD].use.state.counter.degree === 3, "второй — дальний, успех");
+    t.ok(e.answers.length === 0, "оба окна были, лишних нет");
+    t.ok(e.gate(m).by?.actor === e.T(r2.tok).name, "плашка: сорвал дальний");
+  });
+
+  sc("counter-restore", "«Вернуть»: после срыва кнопки возвращаются, эффект onUse.apply наложен ровно один раз; пока сорвано — эффекта нет", async (e, t) => {
+    openChat();
+    const rule = { v: 1, onUse: { targets: "self", apply: [{ to: "self", condition: { slug: "frightened", value: 1 } }] } };
+    const { A0, sp0, entry } = await caster(e, "sure-strike", rule);
+    const tA = await e.tok(A0, 1000, 1000, -1);
+    await reactor(e, "контрзаклинатель", 800, 1000, WIN);
+    await wait(900);
+    const sp = e.A(tA).items.get(sp0.id), ent = e.A(tA).items.get(entry.id);
+    const cnd = () => e.A(tA).itemTypes.condition.find((c) => c.slug === "frightened")?.value ?? 0;
+    await e.fix(10); await e.aim(tA);
+    e.answers.push("0");
+    const m = await castCard(e, ent, sp, 1, false);
+    t.ok(await waitFor(() => e.gate(m).cancelled === true, 25000), "сорвано");
+    await wait(4000);
+    t.ok(cnd() === 0 && !e.use(m)?.state?.done, "пока сорвано — эффекта нет");
+    (await waitFor(() => plaqueBtn(e, m, "release"), 6000))?.click();
+    t.ok(await waitFor(() => cnd() === 1, 12000), `«Вернуть»: испуг 1 (${cnd()})`);
+    await wait(3000);
+    t.ok(cnd() === 1 && e.A(tA).itemTypes.condition.filter((c) => c.slug === "frightened").length === 1, "ровно один раз, повторного окна нет");
+    t.ok(game.messages.get(m.id).content.includes("card-buttons") && !game.messages.get(m.id).flags[MOD].counterContent, "content восстановлен");
+    t.ok(e.answers.length === 0 && hosts(m).length === 1, "новой проверки при выпуске не было");
+  });
+
+  sc("counter-none", "Нет контрзаклинателей на сцене: карточка уходит сразу (без удержания), эффект onUse.apply — как обычно", async (e, t) => {
+    openChat();
+    const rule = { v: 1, onUse: { targets: "self", apply: [{ to: "self", condition: { slug: "frightened", value: 1 } }] } };
+    const { A0, sp0, entry } = await caster(e, "sure-strike", rule);
+    const tA = await e.tok(A0, 1000, 1000, -1);
+    await wait(900);
+    const sp = e.A(tA).items.get(sp0.id), ent = e.A(tA).items.get(entry.id);
+    await e.aim(tA);
+    const m = await castCard(e, ent, sp, 1, false);
+    t.ok(!!m && !e.gate(m).hold && !e.gate(m).cancelled, `без удержания (${JSON.stringify(e.gate(m))})`);
+    t.ok(await waitFor(() => (e.A(tA).itemTypes.condition.find((c) => c.slug === "frightened")?.value ?? 0) === 1, 10000), "эффект наложен");
+  });
+
+  sc("counter-sustain", "Поддержание сорванного заклинания: якорь не ставится; «Вернуть» — якорь появляется", async (e, t) => {
+    openChat();
+    const { A0, sp0, entry } = await caster(e, "figment");
+    const tA = await e.tok(A0, 1000, 1000, -1);
+    await wait(900);
+    const sp = e.A(tA).items.get(sp0.id), ent = e.A(tA).items.get(entry.id);
+    const anchors = () => e.A(tA).items.filter((i) => i.flags?.[MOD]?.sustain);
+    await e.aim(tA);
+    await castCard(e, ent, sp, 1, false);   // эталон: без контрзаклинателей якорь ставится
+    if (!(await waitFor(() => anchors().length, 8000))) throw new Skip("якорь Поддержания в этом мире не ставится даже без контрзаклинания");
+    for (const a of anchors()) await a.delete();
+    await reactor(e, "контрзаклинатель", 800, 1000, WIN);
+    await wait(900);
+    await e.fix(10); await e.aim(tA);
+    e.answers.push("0");
+    const m = await castCard(e, ent, sp, 1, false);
+    t.ok(await waitFor(() => e.gate(m).cancelled === true, 25000), "сорвано");
+    await wait(4000);
+    t.ok(anchors().length === 0, "якоря нет");
+    (await waitFor(() => plaqueBtn(e, m, "release"), 6000))?.click();
+    t.ok(await waitFor(() => anchors().length === 1, 10000), "после «Вернуть» якорь есть");
+  });
+
+  // ---------- M4.8: последствия по исходу, иммунитет, частота, range any, переброс ----------
+  const PERS = { to: "target", persistent: { formula: "1d10", damageType: "void" } };
+  const IMM = { slug: "af-heretic", scope: "slug", duration: { value: 24, unit: "hours" } };
+  const hasPers = (A) => A.itemTypes.condition.some((c) => c.slug === "persistent-damage");
+  const hasImm = (A) => A.itemTypes.effect.some((i) => i.flags?.[MOD]?.immunity?.slug === IMM.slug);
+  const casterDc = (ent) => ent.statistic?.dc?.value ?? ent.system?.spelldc?.dc ?? 20;
+  const saves = () => import("/modules/pf2e-automato/scripts/saves.mjs");
+
+  sc("counter-chastise", "Срыв с уроном заклинателю (Chastise-подобная): продолжительный void на заклинателе после итога, иммунитета нет; «Вернуть» снимает урон", async (e, t) => {
+    openChat();
+    const { tA, sp, ent } = await fireballSetup(e);
+    await reactor(e, "контрзаклинатель", 400, 1000, { ...WIN, onCounter: [PERS], immunity: IMM });
+    await wait(900);
+    e.answers.push("0");
+    const m = await castCard(e, ent, sp, 3, false);
+    t.ok(await waitFor(() => e.gate(m).cancelled === true && settled(m), 25000), `сорвано (${JSON.stringify(e.gate(m))})`);
+    t.ok(await waitFor(() => hasPers(e.A(tA)), 10000), "продолжительный урон на заклинателе");
+    t.ok(!hasImm(e.A(tA)), "при срыве иммунитета нет");
+    const h = hosts(m)[0];
+    t.ok(Object.keys(h.flags[MOD].use.state.challenge?.applied ?? {}).length === 1, "применение — по штатному пути карточки проверки (state.challenge.applied)");
+    (await waitFor(() => plaqueBtn(e, m, "release"), 6000))?.click();
+    t.ok(await waitFor(() => !hasPers(e.A(tA)), 10000), "«Вернуть»: продолжительный урон снят");
+  });
+
+  sc("counter-immunity", "Иммунитет по несрыву: успех, но ранг заклинания выше контр-ранга, — заклинание идёт, иммунитет на заклинателе, повторное сотворение окна не открывает", async (e, t) => {
+    openChat();
+    const { tA, sp, ent } = await fireballSetup(e);
+    const dc = casterDc(ent);
+    await reactor(e, "контрзаклинатель", 400, 1000, { mod: dc - 8, rank: 3, onCounter: [PERS], immunity: IMM });   // d20 = 10: итог dc+2 — успех; ранг 5 против 3 не срывается
+    await wait(900);
+    e.answers.push("0");
+    const m = await castCard(e, ent, sp, 5, false);
+    t.ok(await waitFor(() => e.gate(m).replayed === true && !e.gate(m).hold && settled(m), 25000), `выпущено (${JSON.stringify(e.gate(m))})`);
+    const st = hosts(m)[0].flags[MOD].use.state;
+    t.ok(st.counter.degree === 2 && !e.gate(m).cancelled, `успех без срыва (степень ${st.counter.degree})`);
+    t.ok(await waitFor(() => hasImm(e.A(tA)), 10000), "иммунитет на заклинателе");
+    t.ok(!hasPers(e.A(tA)), "onCounter не исполнялся");
+    e.answers.push("0");
+    const m2 = await castCard(e, ent, sp, 5, false);
+    await wait(3500);
+    t.ok(!!m2 && !e.gate(m2).hold && hosts(m2).length === 0 && e.answers.length === 1, "повторное сотворение: окна и проверки нет");
+    e.answers.length = 0;
+  });
+
+  sc("counter-frequency", "Частота 1/день: после срыва окно второго сотворения не открывается; счётчик предмета 0", async (e, t) => {
+    openChat();
+    const { sp, ent } = await fireballSetup(e);
+    const r = await reactor(e, "контрзаклинатель", 400, 1000, WIN, {}, { frequency: { value: 1, max: 1, per: "day" } });
+    const item = () => e.A(r.tok).items.find((i) => i.name === "AF контрзаклинание");
+    await wait(900);
+    e.answers.push("0");
+    const m = await castCard(e, ent, sp, 3, false);
+    t.ok(await waitFor(() => e.gate(m).cancelled === true, 25000), "сорвано");
+    t.ok(await waitFor(() => item().system.frequency.value === 0, 6000), `частота списана (${item().system.frequency.value})`);
+    e.answers.push("0");
+    const m2 = await castCard(e, ent, sp, 3, false);
+    await wait(3500);
+    t.ok(!!m2 && !e.gate(m2).hold && hosts(m2).length === 0 && e.answers.length === 1, "второе сотворение: окна нет");
+    e.answers.length = 0;
+  });
+
+  sc("counter-range-any", "range \"any\": контрзаклинатель в 80 фт получает окно; за стеной — нет (стены в силе)", async (e, t) => {
+    openChat();
+    const { sp, ent } = await fireballSetup(e);
+    await reactor(e, "далеко", 2200, 1000, WIN, { range: "any" });   // 80 фт от заклинателя
+    await reactor(e, "за стеной", 400, 1000, WIN, { range: "any" });
+    await e.scene.createEmbeddedDocuments("Wall", [{ c: [500, 800, 500, 1200], move: CONST.WALL_MOVEMENT_TYPES.NORMAL, sight: 20, light: 20, sound: 20 }]);
+    await wait(900);
+    e.answers.push("0", "0");
+    const m = await castCard(e, ent, sp, 3, false);
+    t.ok(await waitFor(() => e.gate(m).cancelled === true, 25000), `дальний сорвал (${JSON.stringify(e.gate(m))})`);
+    t.ok(hosts(m).length === 1 && e.answers.length === 1, `окно одно (карточек ${hosts(m).length}, неиспользованных ответов ${e.answers.length}): за стеной окна нет`);
+    e.answers.length = 0;
+  });
+
+  sc("counter-reroll-after-apply", "Переброс после применения: changedAfterApply, последствия не повторяются, исход не переигрывается; «Вернуть» снимает применённое", async (e, t) => {
+    openChat();
+    const { tA, sp, ent } = await fireballSetup(e);
+    await reactor(e, "контрзаклинатель", 400, 1000, { ...WIN, onCounter: [PERS] });
+    await wait(900);
+    e.answers.push("0");
+    const m = await castCard(e, ent, sp, 3, false);
+    t.ok(await waitFor(() => e.gate(m).cancelled === true && hasPers(e.A(tA)), 25000), "сорвано, урон наложен");
+    const h = hosts(m)[0], key = Object.keys(h.flags[MOD].use.state.challenge.results)[0];
+    const r = await (await saves()).recordResult(h.id, key, { degree: 0, total: 1, dc: 20, isReroll: true, rollMessageId: "af-reroll" });
+    t.ok(r.ok && r.changed, `переброс принят после применения (${JSON.stringify(r)})`);
+    const st = game.messages.get(h.id).flags[MOD].use.state;
+    t.ok(st.challenge.results[key].changedAfterApply === true && st.counter.degree === 0, "changedAfterApply, исход обновлён");
+    await wait(2500);
+    t.ok(e.A(tA).itemTypes.condition.filter((c) => c.slug === "persistent-damage").length === 1 && e.gate(m).cancelled === true, "урон один раз, срыв не переигран");
+    (await waitFor(() => plaqueBtn(e, m, "release"), 6000))?.click();
+    t.ok(await waitFor(() => !hasPers(e.A(tA)), 10000), "«Вернуть» снимает применённое");
+  });
+
+  // ---------- трата ячейки (M4.9, counter.expend): NPC-контрзаклинатель с записью колдовства ----------
+  /** Контрзаклинатель с записью «AF» (kind: spontaneous | prepared) и правилом counter. spells — slug заклинаний записи; slots — {ранг: число} (спонтанная) либо
+   *  prep — {ранг: [slug | {slug, expended}]} (подготовленная). party — союзник «партии» (враг для заклинателя-монстра: нужен записям каталога с when origin:enemy). */
+  const slotReactor = async (e, name, x, y, counter, { kind = "spontaneous", spells = ["fireball"], slots = { 3: 2 }, prep = {}, extra = {}, party = false, item = null } = {}) => {
+    const A = party ? await victim(e, name) : await e.foe(name);
+    const lv = (r) => (kind === "prepared" ? (prep[r]?.length ?? 0) : (slots[r] ?? 0));
+    const [entry] = await e.give(A, { type: "spellcastingEntry", name: "AF", system: { ability: { value: "cha" }, spelldc: { value: 30, dc: 40 }, tradition: { value: "arcane" }, prepared: { value: kind }, slots: Object.fromEntries([1, 2, 3, 4, 5].map((r) => [`slot${r}`, { max: lv(r), value: kind === "prepared" ? 0 : lv(r) }])) } });
+    const docs = [];
+    for (const slug of spells) { const d = await find("pf2e.spells-srd", slug); d.system.location = { value: entry.id }; docs.push(d); }
+    const made = await e.give(A, ...docs);
+    if (kind === "prepared") {
+      const idOf = (slug) => made.find((s) => s.slug === slug)?.id;
+      await entry.update(Object.fromEntries(Object.entries(prep).map(([r, list]) => [`system.slots.slot${r}.prepared`, Object.fromEntries(list.map((p, i) => [i, { id: idOf(p.slug ?? p), expended: !!p.expended }]))])));
+    }
+    await e.give(A, item ?? { type: "action", name: "AF контрзаклинание", system: { actionType: { value: "reaction" }, description: { value: "<p><strong>Trigger</strong> A creature Casts a Spell.</p>" } }, flags: { [MOD]: { rule: counterRule(counter, { range: "any", ...extra }) } } });
+    return { A, tok: await e.tok(A, x, y, party ? 1 : -1), entryId: entry.id };
+  };
+  const entryOf = (A) => A.itemTypes.spellcastingEntry.find((x) => x.name === "AF");
+  const spentOps = (m) => (game.messages.get(m.id)?.flags?.[MOD]?.events ?? []).flatMap((r) => (r.recs ?? []).flatMap((x) => x.ops ?? [])).filter((o) => o.op === "slotExpended");
+  const prepExpended = (A, rank) => Object.values(entryOf(A).system.slots[`slot${rank}`].prepared).map((p) => !!p.expended);
+
+  sc("counter-slot-spont", "Спонтанная запись: ячейка 3-го ранга потрачена одна (запись журнала slotExpended), проверка — counteraction этой записи, контр-ранг = ранг ячейки; «Вернуть» ячейку не возвращает", async (e, t) => {
+    openChat();
+    const { sp, ent } = await fireballSetup(e);
+    const r = await slotReactor(e, "спонтанный", 400, 1000, { expend: { from: "slot", spell: "same" } });
+    await wait(900);
+    e.answers.push("0");
+    const m = await castCard(e, ent, sp, 3, false);
+    t.ok(await waitFor(() => e.gate(m).cancelled === true, 25000), `сорвано (${JSON.stringify(e.gate(m))})`);
+    const A = () => e.A(r.tok), h = hosts(m)[0], use = h?.flags?.[MOD]?.use;
+    t.ok(entryOf(A()).system.slots.slot3.value === 1, `ячейка потрачена одна: ${entryOf(A()).system.slots.slot3.value}/2`);
+    const ops = spentOps(m);
+    t.ok(ops.length === 1 && ops[0].rank === 3 && ops[0].prev === 2 && ops[0].slot === null && ops[0].entry === r.entryId, `запись журнала: ${JSON.stringify(ops)}`);
+    t.ok(use?.rule?.onUse?.check?.entry === r.entryId && use.rule.onUse.check.mod === undefined, `проверка закреплена за записью (${JSON.stringify(use?.rule?.onUse?.check)})`);
+    t.ok(use?.state?.counter?.counterRank === 3, `контр-ранг — ранг ячейки (${use?.state?.counter?.counterRank})`);
+    (await waitFor(() => plaqueBtn(e, m, "release"), 6000))?.click();
+    await wait(4000);
+    t.ok(entryOf(A()).system.slots.slot3.value === 1 && spentOps(m).length === 1, "«Вернуть»: ячейка не возвращается (цена сотворения потрачена), повторной траты нет");
+  });
+
+  sc("counter-slot-prepared", "Подготовленная запись: две копии заклинания в слотах 3-го ранга — тратится один слот (первый неистраченный), потраченный ранее не трогается; без окна выбора", async (e, t) => {
+    openChat();
+    const { sp, ent } = await fireballSetup(e);
+    const r = await slotReactor(e, "подготовленный", 400, 1000, { expend: { from: "prepared", spell: "same" } }, { kind: "prepared", prep: { 3: [{ slug: "fireball", expended: true }, "fireball", "fireball"] } });
+    await wait(900);
+    e.answers.push("0");
+    const m = await castCard(e, ent, sp, 3, false);
+    t.ok(await waitFor(() => e.gate(m).cancelled === true, 25000), `сорвано (${JSON.stringify(e.gate(m))})`);
+    t.ok(prepExpended(e.A(r.tok), 3).join() === "true,true,false", `потрачен первый неистраченный слот (${prepExpended(e.A(r.tok), 3)})`);
+    const ops = spentOps(m);
+    t.ok(ops.length === 1 && ops[0].slot === 1 && ops[0].rank === 3, `запись журнала: ${JSON.stringify(ops)}`);
+    t.ok(e.answers.length === 0, "окно одно, без дополнительных вопросов");
+  });
+
+  sc("counter-slot-choose", "Несколько ячеек (3-й и 5-й ранг, «не ниже»): окно с вариантами; выбран 5-й — потрачен он, контр-ранг 5; 3-й цел", async (e, t) => {
+    openChat();
+    const { sp, ent } = await fireballSetup(e);
+    const r = await slotReactor(e, "выбор", 400, 1000, { expend: { from: "prepared", spell: "same", rank: "min" } }, { kind: "prepared", prep: { 3: ["fireball"], 5: ["fireball"] } });
+    await wait(900);
+    e.answers.push("1");   // второй вариант в списке — 5-й ранг
+    const m = await castCard(e, ent, sp, 3, false);
+    t.ok(await waitFor(() => hosts(m).length === 1, 25000), "карточка проверки создана");
+    t.ok(prepExpended(e.A(r.tok), 5).join() === "true" && prepExpended(e.A(r.tok), 3).join() === "false", `потрачен 5-й ранг, 3-й цел (3: ${prepExpended(e.A(r.tok), 3)}, 5: ${prepExpended(e.A(r.tok), 5)})`);
+    t.ok(hosts(m)[0].flags[MOD].use.state.counter.counterRank === 5, `контр-ранг 5 (${hosts(m)[0].flags[MOD].use.state.counter.counterRank})`);
+    t.ok(e.answers.length === 0, "ответ окна израсходован");
+  });
+
+  sc("counter-slot-none", "Нет подходящей ячейки (ячейки кончились / заговор, а не ячейка): окна нет, карточка не удержана, реакция и ячейки целы", async (e, t) => {
+    openChat();
+    const { sp, ent } = await fireballSetup(e);
+    const r = await slotReactor(e, "пустой", 400, 1000, { expend: { from: "slot", spell: "same" } }, { slots: { 3: 0 } });
+    await wait(900);
+    e.answers.push("0");
+    const m = await castCard(e, ent, sp, 3, false);
+    await wait(3500);
+    t.ok(!!m && !e.gate(m).hold && hosts(m).length === 0 && e.answers.length === 1, `ячеек нет — окна нет (${JSON.stringify(e.gate(m))}, ответов ${e.answers.length})`);
+    t.ok(spentOps(m).length === 0 && entryOf(e.A(r.tok)).system.slots.slot3.value === 0, "ничего не потрачено");
+    e.answers.length = 0;
+    // заговор в репертуаре: pf2e consume для заговора ничего не списывает — «бесплатной ячейки» быть не должно
+    const c = await caster(e, "ray-of-frost");
+    const tC = await e.tok(c.A0, 600, 1400, -1);
+    await slotReactor(e, "заговорщик", 400, 1400, { expend: { spell: "same" } }, { spells: ["ray-of-frost"], slots: { 1: 3 } });
+    await wait(900);
+    await e.aim(tC);
+    e.answers.push("0");
+    const m2 = await castCard(e, e.A(tC).items.get(c.entry.id), e.A(tC).items.get(c.sp0.id), 1, false);
+    await wait(3500);
+    t.ok(!!m2 && !e.gate(m2).hold && hosts(m2).length === 0 && e.answers.length === 1, `заговор не открывает окно (${JSON.stringify(e.gate(m2))})`);
+    e.answers.length = 0;
+  });
+
+  sc("counter-slot-when", "Условие триггера отдельно от траты: spell-cast:prepared — заклинание не подготовлено, окна нет, хотя слот другого заклинания есть; подготовили — окно, тратится любое подготовленное", async (e, t) => {
+    openChat();
+    const { sp, ent } = await fireballSetup(e);
+    const r = await slotReactor(e, "условие", 400, 1000, { expend: { from: "prepared", spell: "any" } }, { kind: "prepared", spells: ["fireball", "sure-strike"], prep: { 3: ["sure-strike"] }, extra: { when: ["spell-cast:prepared"] } });
+    await wait(900);
+    e.answers.push("0");
+    const m = await castCard(e, ent, sp, 3, false);
+    await wait(3500);
+    t.ok(!!m && !e.gate(m).hold && hosts(m).length === 0 && e.answers.length === 1, `не подготовлено — окна нет (${JSON.stringify(e.gate(m))})`);
+    const A = e.A(r.tok), fb = A.items.find((i) => i.slug === "fireball"), ss = A.items.find((i) => i.slug === "sure-strike");
+    await entryOf(A).update({ "system.slots.slot3.max": 2, "system.slots.slot3.prepared": { 0: { id: ss.id, expended: false }, 1: { id: fb.id, expended: false } } });
+    await wait(500);
+    const m2 = await castCard(e, ent, sp, 3, false);
+    t.ok(await waitFor(() => hosts(m2).length === 1, 25000), "подготовлено — окно открылось, карточка проверки создана");
+    t.ok(prepExpended(e.A(r.tok), 3).join() === "true,false", `потрачено первое подготовленное в ранге, любое («Верный удар»): ${prepExpended(e.A(r.tok), 3)}`);
+    e.answers.length = 0;
+  });
+
+  sc("counter-slot-catalog", "Каталог: Dueling Counter (любая ячейка) у союзника партии против монстра-заклинателя — окно, трата ячейки; запись берётся из каталога по источнику, when origin:enemy", async (e, t) => {
+    openChat();
+    const { sp, ent } = await fireballSetup(e);
+    const dc = await find("pf2e.actionspf2e", "dueling-counter");
+    const r = await slotReactor(e, "дуэлянт", 400, 1000, null, { slots: { 3: 2 }, party: true, item: dc });
+    await wait(900);
+    e.answers.push("0");
+    const m = await castCard(e, ent, sp, 3, false);
+    t.ok(await waitFor(() => hosts(m).length === 1, 25000), `окно открылось, проверка создана (${JSON.stringify(e.gate(m))})`);
+    t.ok(entryOf(e.A(r.tok)).system.slots.slot3.value === 1 && spentOps(m).length === 1, `ячейка потрачена одна: ${entryOf(e.A(r.tok)).system.slots.slot3.value}/2`);
+    e.answers.length = 0;
   });
 
   // ---------- прогон ----------

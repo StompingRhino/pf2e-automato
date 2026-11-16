@@ -833,7 +833,7 @@ export class Workshop extends HandlebarsApplicationMixin(ApplicationV2) {
             : F.sel(`${p}.on`, t("workshop.au.ev.onLabel"), e.on, choices(EVENT_ON.flatMap((k) => (k === "damage-taken" ? [k, HP0] : [k])), "au.ev.on"), e.on === HP0 ? { tip: t("workshop.au.ev.hp0Hint") } : {}),
           F.sel(`${p}.side`, t("workshop.au.ev.sideLabel"), e.side, choices(au.evSides(e), "au.ev.side")),
           ...(e.side === "near" ? [
-            F.text(`${p}.aura`, t("workshop.au.ev.zoneAura"), e.aura, { placeholder: "frightful-aura", hint: t("workshop.au.ev.zoneAuraHint") }), F.num(`${p}.range`, t("workshop.au.ev.zoneRange"), e.range, { min: 1 }),
+            F.text(`${p}.aura`, t("workshop.au.ev.zoneAura"), e.aura, { placeholder: "frightful-aura", hint: t("workshop.au.ev.zoneAuraHint") }), (e.counter ? F.text(`${p}.range`, t("workshop.au.ev.zoneRange"), e.range, { placeholder: "any / 30" }) : F.num(`${p}.range`, t("workshop.au.ev.zoneRange"), e.range, { min: 1 })),   // у counter дальность бывает "any" (без ограничения): числовое поле его затёрло бы
             F.sel(`${p}.per`, t("workshop.au.trg.perLabel"), e.per, { "": t("workshop.au.trg.perNone"), ...choices(TRIGGER_PER, "au.trg.per") })
           ] : []),
           F.text(`${p}.when`, t("workshop.au.ev.whenLabel"), e.when, { cls: "ws-grow ws-full", placeholder: "outcome:success, target:condition:off-guard", hint: t("workshop.au.ev.whenHint") }),

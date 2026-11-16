@@ -350,9 +350,16 @@ export async function recordResult(messageId, tokenKey, result) {
 
 async function afterRecord(messageId, tokenKey, changed = false) {
   if (!game.messages.get(messageId)) return;   // карточку удалили, пока ждали анимацию костей
+  // проверка реакции-контрзаклинания: итог решает судьбу удержанного сотворения (counterspell.onResult); шаги по исходу и иммунитет применяются обычным путём по степеням (settleChallenge) — уже после counter.done
+  if (useOf(game.messages.get(messageId))?.state?.counter) return void await (await import("./counterspell.mjs")).onResult(messageId, { apply: () => settleChallenge(messageId, tokenKey) }).catch((e) => console.error(`${MOD} | counterspell.onResult`, e));
   // урон по итогам basic-спасброска: поздний результат или переброс (в button наносит только кнопка)
   try { await (await import("./builtin/basic-damage.mjs")).onResult(messageId); } catch (e) { console.error(`${MOD} | basic-damage`, e); }
   if (changed) return;   // переброс после применения по степеням: шаги не повторяем
+  await settleChallenge(messageId, tokenKey);
+}
+
+/** Применение по степеням итога одной цели (режим apply), затем конец испытания и уборка области. */
+async function settleChallenge(messageId, tokenKey) {
   let batch = false, deferred = false;
   try {
     const message = game.messages.get(messageId), ch = challengeOf(useOf(message));
@@ -389,7 +396,7 @@ export async function afterChallenge(message) {
 export function applyByDegree(messageId, tokenKey, { auto = false } = {}) {
   return queue(`msg:${messageId}`, async () => {
     const message = game.messages.get(messageId), use = useOf(message), ch = challengeOf(use);
-    if (!ch || use.state?.yielded || modeOf("apply") === "off" || isCounterGate(message)) return [];
+    if (!ch || use.state?.yielded || modeOf("apply") === "off" || isCounterGate(message) || use.state?.counter?.reverted) return [];   // reverted: ГМ вернул сорванное сотворение — «Применить» заново не должно срывать эффекты
     const targets = await challengeTargets(message);
     const all = tokenKey === "all";
     if (all && auto) await message.update({ [flagPath("use", "state", "challenge", "autoAll")]: true });   // постоянно: afterRecord больше не гонит пакет
@@ -400,6 +407,7 @@ export function applyByDegree(messageId, tokenKey, { auto = false } = {}) {
     const originDoc = all && use.token ? await fromUuid(use.token) : null;
     const centreOf = (t) => ({ x: t.x + (t.width * (t.parent?.grid?.size ?? 100)) / 2, y: t.y + (t.height * (t.parent?.grid?.size ?? 100)) / 2 });
     const from = all ? (fromPoint && areaPoint(use)) || (originDoc ? centreOf(originDoc) : null) : null;   // нет точки — как при откате шага: от автора
+    const caster = use.state?.counter ? await safeUuid(use.state.counter.caster?.token) : undefined;   // undefined — не карточка контрзаклинания; null — токен заклинателя исчез
     const order = from ? moveOrder(moveSteps, targets.map((e) => ({ ...centreOf(e.token), e })), from).map((i) => i.e) : targets;
     for (const { key, token } of order) {
       if (!all && key !== tokenKey) continue;
@@ -407,10 +415,12 @@ export function applyByDegree(messageId, tokenKey, { auto = false } = {}) {
       if (!r) continue;
       if (all && auto && useOf(message).state?.challenge?.undone?.[key]) continue;   // ГМ откатил строку до пакета — не возвращаем
       // бросок уже сделан (действие или спасбросок из листа), а цель иммунна к этому автору: ничего не применяем (повтор после применения — идемпотентно, пропуск не нужен)
-      if (ch.immunity && !useOf(message).state?.challenge?.applied?.[key] && await isImmune(useOf(message), token, ch)) continue;
-      const steps = ch.byDegree?.[DEGREES[r.degree]] ?? [];
-      ops.push(...await applyOps(message, key, steps, { scope: "challenge", msgQueued: true, degree: r.degree, total: r.total, target: token }));
-      if (ch.immunity) ops.push(...await applyImmunity(message, key, token, ch.immunity, r.degree));
+      // контрзаклинание: цель карточки — владелец записи (бросает и проверяется он), а получатель to:"target" и иммунитета — заклинатель (токен в state.counter.caster); нет токена — только шаги self
+      const subject = caster === undefined ? token : caster;
+      if (ch.immunity && subject && !useOf(message).state?.challenge?.applied?.[key] && await isImmune(useOf(message), subject, ch)) continue;
+      const planned = ch.byDegree?.[DEGREES[r.degree]] ?? [], steps = caster === null ? planned.filter((s) => s.to === "self") : planned;
+      ops.push(...await applyOps(message, key, steps, { scope: "challenge", msgQueued: true, degree: r.degree, total: r.total, ...(subject && { target: subject }) }));
+      if (ch.immunity && subject) ops.push(...await applyImmunity(message, key, subject, ch.immunity, r.degree));
       if (r.changedAfterApply) await message.update({ [flagPath("use", "state", "challenge", "results", key, "changedAfterApply")]: false });
     }
     if (all) await afterChallenge(message);

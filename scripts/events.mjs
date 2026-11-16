@@ -9,7 +9,7 @@ import * as apply from "./apply.mjs";
 import { testPredicate } from "./predicate.mjs";
 import { useKindOf, buildSnapshot } from "./use.mjs";
 import { card } from "./card.mjs";
-import { messageTargets, esc, combatOf, whisper, useOnce } from "./builtin/lib.mjs";
+import { messageTargets, esc, combatOf, whisper, useOnce, ownerQueue } from "./builtin/lib.mjs";
 import * as sustain from "./sustain.mjs";
 import { familiarsOf, familiarToken, familiarDown, spellDcOf } from "./familiar.mjs";
 import { parseMarker, challengeApplies } from "./saves.mjs";
@@ -19,6 +19,7 @@ import { nearRadius, insideAura, pathRects, rectOf, auraOf } from "./aura.mjs";
 import { armedAt } from "./coat.mjs";
 import { levelDc } from "./cast.mjs";
 import * as hold from "./hold.mjs";
+import * as counterspell from "./counterspell.mjs";
 import { reactionAvailable, spendReaction } from "./reactions.mjs";
 import { carrierSlug, strikeLinkEntry, meleeOf, claimedBy } from "./strike-link.mjs";
 
@@ -239,11 +240,11 @@ export async function runEntry(ev, owner, found, m, sink = null) {
   if (entry.cost !== "reaction") return execEntry(ev, owner, found, m, sink, false);
   // реакция: гейт до окна (потрачена/запрещена — тишина), очередь на владельца и дедуп пачки урона по источнику; free — Легендарное Запугивание и т.п.: реакция не тратится
   // реакция опирается на выбор/проверку: выключенные режимы — тишина до окна, реакция цела
-  if (((entry.check || entry.challenge) && modeOf("challenge") === "off") || ((entry.apply?.length || entry.use) && modeOf("effect") !== "auto")) return null;
+  if (((entry.check || entry.challenge || entry.counter) && modeOf("challenge") === "off") || ((entry.apply?.length || entry.use) && modeOf("effect") !== "auto")) return null;
   const free = !!entry.free && pass(entry.free, new Set(owner.getRollOptions?.() ?? []));
   if (!free && !reactionAvailable(owner)) return null;
   const group = `${owner.uuid}|${ev.message?.flags?.pf2e?.origin?.uuid ?? ev.other?.uuid ?? ""}`;
-  return queue(`reaction:${owner.uuid}`, async () => {
+  return queue(`reaction:${owner.uuid}`, async () => {   // окна сериализуются; ownerQueue (общая с Блоком щитом/подсказками) — только вокруг проверки-и-траты в spend: шаги apply ждут решения damaged в ownerQueue
     if (fired.has(ev.key ?? entryKey(ev.id, found.item.uuid, m.i)) || Date.now() - (reactionBurst.get(group) ?? 0) < BURST_MS) return null;
     if (!free && !reactionAvailable(owner)) return null;   // пока ждали очередь, реакцию потратили
     try { return await execEntry(ev, owner, found, m, sink, free); }
@@ -282,14 +283,39 @@ async function execEntry(ev, owner, { item, rule }, { i, entry }, sink, free) {
   // реакция: тратится только после подтверждения (первый шаг choose либо окно да/нет) и повторной проверки; откат записи возвращает флаг (op reactionSpent)
   const picks = { opts: new Set(), actor: null, effect: null };
   let spent = !entry.cost, halt = false;
-  const spend = async () => {
+  // pay (контрзаклинание с ячейкой) -> операция slotExpended | null: ячейка тратится раньше реакции (pf2e сам предупредит при неудаче, а потерянная реакция хуже потерянной ячейки);
+  // still — удержание ещё висит (окно и трата ячейки — await). Отказ или сбой после траты возвращает записанное (apply.undoSpent): частичная цена не остаётся.
+  const spend = (pay = null, still = null) => ownerQueue(owner.uuid, () => spendLocked(pay, still));   // внутри — только трата: ни окон, ни применения шагов
+  const spendLocked = async (pay, still) => {
     if (ev.message?.flags?.pf2e?.appliedDamage?.isReverted) return false;   // урон откатили, пока окно было открыто
     if (!free && !reactionAvailable(owner)) return false;
-    const r = free ? null : await spendReaction(owner, item);
-    if (r) res.recs.push({ tk: "self", ops: [{ op: "reactionSpent", actor: owner.uuid, prev: r.prev, set: r.set }] });
+    if (entry.counter && !counterspell.reserve(owner, item)) return false;   // частота/лимит по свежему значению + бронь до первого await: окна двух сотворений параллельны (1/день не срабатывает дважды)
+    const mark = res.recs.length;
+    let ok = false, fprev = null;
+    try {
+      const slot = pay ? await pay() : null;
+      if (pay && !slot) return false;
+      if (slot) res.recs.push({ tk: "self", ops: [slot] });
+      if (still && !still()) return false;
+      const r = free ? null : await spendReaction(owner, item);
+      if (r) res.recs.push({ tk: "self", ops: [{ op: "reactionSpent", actor: owner.uuid, prev: r.prev, set: r.set }] });
+      fprev = item.system?.frequency?.value;
+      if (entry.counter && !(await counterspell.chargeFrequency(item))) return false;
+      if (still && !still()) return false;   // удержание могли выпустить во время записи реакции/частоты
+      ok = true;
+    } finally {
+      if (entry.counter) counterspell.unreserve(item);
+      if (!ok && fprev != null && item.system?.frequency?.value === fprev - 1) await item.update({ "system.frequency.value": fprev }, { pf2eAutomato: true }).catch((e) => console.warn(`${MOD} | events.spend frequency undo`, e));   // частоту списали, а трата сорвалась — вернуть
+      if (!ok) for (const o of res.recs.splice(mark).flatMap((x) => x.ops).reverse()) await apply.undoSpent(o).catch((e) => console.warn(`${MOD} | events.spend undo`, e));
+    }
     return (spent = true);
   };
   if (entry.use && modeOf("effect") !== "auto") await ChatMessage.create({ whisper: ChatMessage.getWhisperRecipients("GM").map((u) => u.id), speaker: { alias: "pf2e-automato" }, content: card(L("events.useNeedsAuto", { name: esc(item.name) }), "", { title: esc(item.name), icon: "fa-bolt" }) });
+  if (entry.counter) {   // контрзаклинание: окно владельцу, трата реакции, карточка проверки; исход решает counterspell.onResult
+    const id = await counterspell.run({ ev, owner, item, entry, key, spend, build: (r) => snap(r, "use") });
+    if (id) res.host = id;
+    return res.recs.length || res.host ? res : null;
+  }
   if ((entry.apply?.length || entry.use) && modeOf("effect") === "auto") {
     const twin = makeTwin(`ev:${base}`, snap({ v: 1, label: rule.label, onEvent: [entry] }, "event"), ev.message?.flags?.pf2e ?? null);
     // picks — общий на запись выбор шагов choose: шаги идут по одному (свой applyOps), а выбор нужен следующим
@@ -353,13 +379,14 @@ async function execEntry(ev, owner, { item, rule }, { i, entry }, sink, free) {
  * Карточка испытания «другой участник бросает challenge против владельца» (общая для onEvent и повтора спасброска). owner может быть null
  * (автор удалён): говорящий — name, актёр снимка строкой кладёт build. build(rule) -> снимок use; targets и state.event ставим здесь. -> id карточки | null
  */
-export async function hostChallenge({ owner, other, otherToken = null, challenge, check = null, dc = null, castMessage = null, crowd = null, vars = {}, key, name, build, text = "events.host", castRank = null }) {
+export async function hostChallenge({ owner, other, otherToken = null, challenge, check = null, dc = null, castMessage = null, crowd = null, vars = {}, key, name, build, text = "events.host", castRank = null, counter = null, rowName = null }) {
   const t = otherToken ?? tokenOf(other);
   if (!t) return null;
   const use = build(hostRule({ challenge, check }, name));
-  use.targets = [{ key: t.id, uuid: t.uuid, name: t.name, pc: !!other.hasPlayerOwner }];
+  use.targets = [{ key: t.id, uuid: t.uuid, name: rowName ?? t.name, pc: !!other.hasPlayerOwner }];   // rowName — подпись строки (контрзаклинание: проверка владельца идёт против заклинателя, ключ и права остаются за токеном владельца)
   use.state.event = key;   // карточка испытания: события на её бросках не запускаем (цепочки нет)
   if (crowd) use.state.linger = crowd;   // кого учли в СЛ (для разбора: ГМ видит в флагах)
+  if (counter) use.state.counter = counter;   // проверка контрзаклинания: итог читает counterspell.onResult
   if (castMessage) use.state.castMessage = castMessage;   // проверка записи check: шаги cast:true ищут эффекты именно этого сотворения
   if (dc != null) use.dc = dc;   // СЛ карточки проверки: ГМ правит её кнопкой «СЛ» (checkDcOf)
   const msg = await ChatMessage.create({
@@ -456,7 +483,7 @@ export async function fireZoneTrigger(sys, token, on, ev) {
 const isCreature = (actor) => actor.isOfType?.("creature") ?? true;   // жертва — существо (не транспорт, лут, опасность); без isOfType — как есть
 
 /** Стена между центрами прямоугольников (луч как в apply.alliesIn); не на холсте проверить нечем — не блокирует. */
-function wallBlocked(token, a, b) {
+export function wallBlocked(token, a, b) {
   const scene = token.parent;
   if (!scene || globalThis.canvas?.scene !== scene) return false;
   const g = scene.grid?.size || 100, mid = (r) => ({ x: (r.x + r.w / 2) * g, y: (r.y + r.h / 2) * g });
@@ -823,9 +850,9 @@ export function onPreCreate(message) {
 }
 
 /** preCreateChatMessage на клиенте создателя карточки сотворения: удержание `counter` (ставит диспетчер M4) + noAutoDamageRoll Workbench, иначе он бросил бы урон удержанного заклинания. */
-export function markCounterHold(message) {
+export function markCounterHold(message, manual = false) {   // manual — удержание без диспетчера (живые сценарии: api.markCounterHold)
   const wb = compat.EXTERNAL.flags.wbNoAutoDamage;
-  message.updateSource({ flags: { [MOD]: { gate: { hold: hold.COUNTER } }, [wb.scope]: { [wb.key]: true } } });
+  message.updateSource({ flags: { [MOD]: { gate: { hold: hold.COUNTER, ...(manual && { manual: true }) } }, [wb.scope]: { [wb.key]: true } } });
 }
 
 export function init() {

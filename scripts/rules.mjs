@@ -691,7 +691,8 @@ export const FAMILIAR_ON = ["spell-cast", "spell-sustain"];
 export const NEAR_ON = ["turn-start", "turn-end", "enter"];   // spell-cast у near — только с counter, в этот список не входит: он про ход/вход
 /** Сторона near допустима для события: ход/вход всегда, сотворение — если у записи есть counter. */
 export const nearAllowed = (on, counter) => NEAR_ON.includes(on) || (on === "spell-cast" && counter != null);
-export const COUNTER_EXPEND = ["same-spell", "same-rank"];
+// шаги последствий counter: получатель — владелец записи (self) либо заклинатель (target); выбор, перемещение, удержание, носитель, недуг, Поддержание сюда не относятся
+const COUNTER_STEP_BAN = ["choose", "move", "hold", "coat", "coatArm", "affliction", "sustain", "mark", "escape", "repeat"];
 export const EVENT_TARGETED = new Set(["attack-roll", "skill-check", "damage-roll", "spell-cast"]);   // у остальных событий цели нет: side:"target" бессмысленна
 
 // afterUse: бросок владельца сразу после карточки этого предмета (strike-gate: «Make a Strike. If it hits…»). Сотворение (spell-cast) — «следующее действие» (Lingering Composition, запись с check).
@@ -725,17 +726,42 @@ function vEventCheck(c, path, err) {
   return out;
 }
 
-/** counter записи onEvent: проверка контрзаклинания — {mod | statistic, rank: 1–10 | {half:"actor"}, expend?}. Условия записи (spell-cast, near, reaction) проверяет vEvent. */
+/**
+ * counter записи onEvent: проверка контрзаклинания — {mod | statistic (slug | [slug…]), rank: 1–10 | {half:"actor"}, expend?, onCounter?, onFail?, immunity?}. Условия записи (spell-cast, near, reaction) проверяет vEvent.
+ * expend — что потратить: {from?: "prepared" | "slot", spell: "same" | "any" | {slug} | {trait}, rank?: "same" | "min"}; с ним rank и mod/statistic необязательны
+ * (ранг — ранг ячейки, проверка — counteraction потраченной записи колдовства), без mod и statistic — именно она.
+ */
 function vCounter(c, path, err) {
-  if (!isObj(c) || !Object.keys(c).every((k) => ["mod", "statistic", "rank", "expend"].includes(k))) { err.push(E("ev.counter", path)); return null; }
+  if (!isObj(c) || !Object.keys(c).every((k) => ["mod", "statistic", "rank", "expend", "onCounter", "onFail", "immunity"].includes(k))) { err.push(E("ev.counter", path)); return null; }
   const out = {};
-  if ((c.mod == null) === (c.statistic == null)) err.push(E("ev.counter", `${path}.mod`));
+  if (c.expend != null) {
+    const x = c.expend, sp = x?.spell, one = (k) => isObj(sp) && Object.keys(sp).length === 1 && isStr(sp[k]) && SLUG.test(sp[k]);
+    if (!isObj(x) || !Object.keys(x).every((k) => ["from", "spell", "rank"].includes(k)) || !(sp === "same" || sp === "any" || one("slug") || one("trait"))
+      || (x.from != null && !["prepared", "slot"].includes(x.from)) || (x.rank != null && !["same", "min"].includes(x.rank))) err.push(E("ev.counter", `${path}.expend`));
+    else out.expend = { ...(x.from != null && { from: x.from }), spell: isObj(sp) ? { ...sp } : sp, ...(x.rank != null && { rank: x.rank }) };
+  }
+  if (c.mod != null && c.statistic != null) err.push(E("ev.counter", `${path}.mod`));
+  else if (c.mod == null && c.statistic == null) { if (c.expend == null) err.push(E("ev.counter", `${path}.mod`)); }
   else if (c.mod != null) { if (!isInt(c.mod)) err.push(E("ev.counter", `${path}.mod`)); else out.mod = c.mod; }
-  else if (!isStr(c.statistic) || !SLUG.test(c.statistic)) err.push(E("ev.counter", `${path}.statistic`)); else out.statistic = c.statistic;
+  // statistic — slug либо 2–4 slug (берётся лучший модификатор: Devour Ambient Magic — arcana|nature)
+  else if (Array.isArray(c.statistic) ? !(c.statistic.length >= 2 && c.statistic.length <= 4 && c.statistic.every((s) => isStr(s) && SLUG.test(s)) && new Set(c.statistic).size === c.statistic.length) : !isStr(c.statistic) || !SLUG.test(c.statistic)) err.push(E("ev.counter", `${path}.statistic`));
+  else out.statistic = Array.isArray(c.statistic) ? [...c.statistic] : c.statistic;
+  // последствия по исходу (run раскладывает их по степеням карточки проверки): onCounter — сорвано, onFail — не сорвано (степень или ранг заклинания выше)
+  for (const k of ["onCounter", "onFail"]) {
+    if (c[k] == null) continue;
+    const list = vApplyList(c[k], `${path}.${k}`, "target", err);
+    list.forEach((a, i) => { if (!["self", "target"].includes(a.to) || COUNTER_STEP_BAN.some((b) => a[b] != null) || a.basic || a.damage?.basic) err.push(E("ev.counter", `${path}.${k}[${i}]`)); });
+    if (list.length) out[k] = list;
+  }
+  // immunity — к способности у заклинателя при исходе «не сорвано»; степени считает run сам (поле degrees задавать нельзя)
+  if (c.immunity != null) {
+    const im = vImmunity(c.immunity, `${path}.immunity`, err);
+    if (im && (c.immunity.degrees != null || !im.duration || im.uuid)) err.push(E("ev.counter", `${path}.immunity`));
+    else if (im) out.immunity = im;
+  }
   if (isInt(c.rank) && c.rank >= 1 && c.rank <= 10) out.rank = c.rank;
   else if (isObj(c.rank) && Object.keys(c.rank).length === 1 && c.rank.half === "actor") out.rank = { half: "actor" };
-  else err.push(E("ev.counter", `${path}.rank`));
-  if (c.expend != null) { if (!COUNTER_EXPEND.includes(c.expend)) err.push(E("ev.counter", `${path}.expend`)); else out.expend = c.expend; }
+  else if (!(c.rank == null && c.expend != null)) err.push(E("ev.counter", `${path}.rank`));   // без траты ранг обязателен: с ней — ранг потраченной ячейки
   return out;
 }
 
@@ -755,6 +781,7 @@ function vEvent(e, i, err) {
   if (out.side === "near") {
     if ((e.aura == null) === (e.range == null)) err.push(E("ev.nearZone", `${path}.aura`));
     else if (e.aura != null) { if (!isStr(e.aura)) err.push(E("ev.nearZone", `${path}.aura`)); else out.aura = e.aura; }
+    else if (e.range === "any") { if (e.counter == null) err.push(E("ev.nearZone", `${path}.range`)); else out.range = "any"; }   // без ограничения дальности — только counter, и только явно (забытое поле не должно стать «везде»)
     else if (!(isNum(e.range) && e.range > 0)) err.push(E("ev.nearZone", `${path}.range`)); else out.range = e.range;
     if (e.per != null) { if (!TRIGGER_PER.includes(e.per)) err.push(E("trg.per", `${path}.per`)); else out.per = e.per; }
   } else if (e.aura != null || e.range != null || e.per != null) err.push(E("ev.nearOnly", `${path}.aura`));
@@ -784,9 +811,9 @@ function vEvent(e, i, err) {
     if (e.challenge != null || (full ? e.on !== "damage-taken" || !["enemies", "allies"].includes(apply.find((a) => a.choose)?.choose?.from) : e.on !== "spell-cast" || !out.afterUse)) err.push(E("ev.check", `${path}.check`));
     else { const c = vEventCheck(e.check, `${path}.check`, err); if (c) out.check = c; }
   }
-  // counter — срыв чужого сотворения: только «сотворение в зоне владельца», тратит реакцию; шаги apply необязательны (само решение — окно и карточка проверки)
+  // counter — срыв чужого сотворения: только «сотворение в зоне владельца», тратит реакцию; шаги apply запрещены (последствия — onCounter/onFail, само решение — окно и карточка проверки)
   if (e.counter != null) {
-    if (e.on !== "spell-cast" || out.side !== "near" || e.cost !== "reaction") err.push(E("ev.counter", `${path}.counter`));
+    if (e.on !== "spell-cast" || out.side !== "near" || e.cost !== "reaction" || apply.length || e.use != null || e.challenge != null || e.check != null) err.push(E("ev.counter", `${path}.counter`));   // свои шаги у counter — onCounter/onFail; apply/use/challenge/check диспетчер не исполняет
     else { const c = vCounter(e.counter, `${path}.counter`, err); if (c) out.counter = c; }
   } else if (out.side === "near" && ons.includes("spell-cast")) err.push(E("ev.counter", `${path}.on`));
   if (!apply.length && !out.use && e.challenge == null && e.check == null && e.counter == null) err.push(E("ev.empty", path));
@@ -1742,11 +1769,11 @@ export async function loadCatalog() {
     if (!resp.ok) { if (!optional) warn(`не загружен rules/${name}: ${resp.status}`); return null; }
     try { return await resp.json(); } catch (e) { warn(`rules/${name}: битый JSON`, e); if (!optional) throw e; return null; }   // битый необязательный файл не должен ронять остальные каталоги
   };
-  const [cat, pa, model, onhit, rusthenge, labels, ranges, degrees, summons, limits, crit, strikeSave] = await Promise.all([get("catalog.json"), get("catalog.pa.json", true), get("catalog.model.json", true), get("catalog.onhit.json", true), get("catalog.rusthenge.json", true), get("labels.json"), get("ranges.json", true), get("damage-degrees.json", true), get("summons.json", true), get("use-limits.json", true), get("crit-only.json", true), get("catalog.strike-save.json", true)]);
+  const [cat, pa, model, onhit, rusthenge, counterspell, labels, ranges, degrees, summons, limits, crit, strikeSave] = await Promise.all([get("catalog.json"), get("catalog.pa.json", true), get("catalog.model.json", true), get("catalog.onhit.json", true), get("catalog.rusthenge.json", true), get("catalog.counterspell.json", true), get("labels.json"), get("ranges.json", true), get("damage-degrees.json", true), get("summons.json", true), get("use-limits.json", true), get("crit-only.json", true), get("catalog.strike-save.json", true)]);
   initOverlays(ranges, degrees, summons, limits, crit);
   // при совпадении ключа побеждает последний: автоматический перенос PA — первым, проверенные вручную — после
   // model (tools/drafts.mjs): черновики пачек от Haiku/Sonnet, прошедшие валидатор и выборку
-  return initCatalog([pa, strikeSave, model, onhit, rusthenge, cat].filter(Boolean), labels);   // strikeSave (tools/strike-save-cond.mjs): «Удар -> спасбросок -> состояние», bySource — при совпадении ключа bySource model/rusthenge/ручные главнее; но resolveRule берёт любой bySource раньше любого bySlug (onhit и ручные bySlug его не перекрывают; tools/check-catalogs.mjs ловит только ручные bySlug против bySource, onhit/pa не проверяет); onhit (tools/onhit.mjs): «при попадании Удара — состояние» по тексту; rusthenge — существа приключения Rusthenge (перекрывает model); ручные каталоги главнее
+  return initCatalog([pa, strikeSave, model, onhit, rusthenge, counterspell, cat].filter(Boolean), labels);   // strikeSave (tools/strike-save-cond.mjs): «Удар -> спасбросок -> состояние», bySource — при совпадении ключа bySource model/rusthenge/ручные главнее; но resolveRule берёт любой bySource раньше любого bySlug (onhit и ручные bySlug его не перекрывают; tools/check-catalogs.mjs ловит только ручные bySlug против bySource, onhit/pa не проверяет); onhit (tools/onhit.mjs): «при попадании Удара — состояние» по тексту; rusthenge — существа приключения Rusthenge (перекрывает model); ручные каталоги главнее
 }
 let loading = null;
 /** Один общий промис загрузки каталога: main ждёт его на ready, Мастерская и лист — до первого рендера. Неудача сбрасывает его. */
