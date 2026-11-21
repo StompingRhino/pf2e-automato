@@ -85,7 +85,15 @@ async function openCatalog(kind = "tokens") {
   };
 }
 
-const defaultEnv = () => ({ enabled: (key) => !key || settingOn(key), state: nexusState, local: localFiles, openCatalog, forget: () => { files = null; } });
+/** Локальный файл ассета по id каталога (папка загрузки — настройка FA Nexus; probeLocal смотрит на диск, без сети) или null. */
+async function probeAsset(id) {
+  try {
+    const { NexusDownloadManager } = await import(foundry.utils.getRoute("modules/fa-nexus/scripts/content/nexus-download-manager.js"));
+    return (await new NexusDownloadManager().probeLocal("assets", { file_path: `${id}.webp` })) || null;
+  } catch (e) { debug("probeAsset", e); return null; }
+}
+
+const defaultEnv = () => ({ enabled: (key) => !key || settingOn(key), state: nexusState, local: localFiles, openCatalog, probe: probeAsset, forget: () => { files = null; } });
 
 // stop-слова: «Dragon_Skeleton» — не «Dragon»; файл с таким словом годится, только если оно есть в одном из имён
 const STOP = new Set(["skeleton", "skeletal", "spirit", "zombie", "ghost"]);
@@ -169,6 +177,8 @@ export async function findAsset(entries, { setting = "formTokens", env = default
     if (state !== "ok") return { reason: state };
     const pick = pickWeighted(entries, rnd);
     if (!pick) return { reason: "not-found" };
+    const local = await env.probe?.(pick.id);   // уже скачан — сразу с диска; поиск в каталоге — полный проход по базе Nexus (~4,5 с), только для первого скачивания
+    if (local) return { src: local, scale: assetScaleOf(pick.id) };
     const cat = await env.openCatalog("assets");
     try {
       const item = (await cat.list(pick.id.split("/").pop())).find((x) => catKey(x) === pick.id);

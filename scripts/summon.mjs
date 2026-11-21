@@ -192,13 +192,14 @@ async function createObject({ message, item, spec, author, rank }, key, n, { sce
     const ftMax = force ? null : itemRange(item, []) ?? o.range ?? null;
     if (ftMax && distanceFt(rectCell(authorToken, g), spot, scene.grid.distance || 5) > ftMax) return { ok: false, reason: "far", ft: ftMax };
     const data = td.toObject(), d = durationOf(item, spec), hp = objectHp(o, rank);
+    const art = await artOf(message, o.art);   // до создания: токен сразу с картинкой Nexus, без смены иконки на глазах
     delete data._id;
     Object.assign(data, {
       name: item.name, x: spot.x * g, y: spot.y * g, sort: Math.min(0, ...scene.tokens.map((t) => t.sort ?? 0)) - 1,   // крона не накрывает токены
-      texture: { ...data.texture, src: TREE }, delta: { ...data.delta, ownership: { default: 0 }, system: { attributes: { hp: { value: hp, max: hp } } } }
+      texture: { ...data.texture, src: art.src ?? TREE, scaleX: art.scale ?? 1, scaleY: art.scale ?? 1 }, delta: { ...data.delta, ownership: { default: 0 }, system: { attributes: { hp: { value: hp, max: hp } } } }
     });
     const src = item._stats?.compendiumSource ?? item.sourceId ?? item.uuid;
-    data.flags = { ...data.flags, [MOD]: { summoned: { kind: "object", key, src, by: author.uuid, msg: message.id, until: d ? game.time.worldTime + durSeconds(d) : null, guard: { ...o.guard, alliance: author.alliance ?? null } } } };
+    data.flags = { ...data.flags, [MOD]: { summoned: { kind: "object", key, src, by: author.uuid, msg: message.id, until: d ? game.time.worldTime + durSeconds(d) : null, guard: { ...o.guard, alliance: author.alliance ?? null }, art: !!art.src } } };
     [token] = await scene.createEmbeddedDocuments("Token", [data]);
     fresh = true;
   }
@@ -208,6 +209,24 @@ async function createObject({ message, item, spec, author, rank }, key, n, { sce
   return { ok: true, token: token.uuid, dup: !fresh };
 }
 
+/** Картинка дерева: случайный ассет FA Nexus по весам (настройка formTokens) -> { src, scale } | {} (остаётся иконка).
+ *  ГМ выбирает её при сотворении (prefetchArt) и пишет в карточку: призрак при выборе клетки показывает то же дерево, что встанет. */
+const artJobs = new Map();   // id сообщения -> Promise картинки
+const artFlag = (message) => message?.flags?.[MOD]?.summoned?.art ?? null;
+function artOf(message, art) {
+  if (artFlag(message)?.src) return Promise.resolve(artFlag(message));
+  if (!artJobs.has(message.id)) {
+    artJobs.set(message.id, import("./nexus-tokens.mjs").then(({ findAsset }) => findAsset(art.entries))
+      .then(async (r) => { if (r.src) await message.update({ [flagPath("summoned", "art")]: { src: r.src, scale: r.scale } }); return r; })
+      .catch((e) => { console.warn(`${MOD} | summon art`, e); return {}; }));
+  }
+  return artJobs.get(message.id);
+}
+function prefetchArt(message) {
+  if (!guardActiveGM() || !message.item || !isUseCard(message)) return;
+  const art = summonSpec(message.item)?.object?.art;
+  if (art) artOf(message, art);
+}
 
 /** Шаги после токена — все идемпотентны (повтор после сбоя доделывает недоделанное). */
 async function settle(token, { message, item, author, n, fresh }) {
@@ -356,20 +375,33 @@ async function placementPreview(token, ft, ghost) {
     const tex = ghost?.src ? await foundry.canvas.loadTexture(ghost.src) : null;
     if (tex) {
       spr = new PIXI.Sprite(tex);
-      spr.width = (ghost.w ?? 1) * s; spr.height = (ghost.h ?? 1) * s; spr.alpha = 0.7; spr.eventMode = "none"; spr.visible = false;
+      const k = ghost.scale ?? 1;   // масштаб картинки токена (крона дерева шире клетки) — по центру клеток токена, как на сцене
+      spr.width = (ghost.w ?? 1) * s * k; spr.height = (ghost.h ?? 1) * s * k; spr.anchor.set(0.5); spr.alpha = 0.7; spr.eventMode = "none"; spr.visible = false;
       canvas.interface.addChild(spr);
     }
   } catch { spr = null; }
   return {
-    move(pt, far) { if (!spr) return; spr.visible = true; spr.position.set(pt.x, pt.y); spr.tint = far ? 0xff7a6e : 0xffffff; spr.alpha = far ? 0.45 : 0.7; },
+    move(pt, far) { if (!spr) return; spr.visible = true; spr.position.set(pt.x + (ghost.w ?? 1) * s / 2, pt.y + (ghost.h ?? 1) * s / 2); spr.tint = far ? 0xff7a6e : 0xffffff; spr.alpha = far ? 0.45 : 0.7; },
     clear() { try { grid?.destroyHighlightLayer(HL); } catch { /* слой не создан */ } try { spr?.destroy(); } catch { /* уже снят */ } }
   };
 }
 
-function pickPoint(token, ft, ghost = null) {
+/** Анимация появления объекта — через Automated Animations, не модулем: запись AA с именем «<предмет> (появление)» (lang summon.appearFx).
+ *  Отдельное имя — чтобы запись не срабатывала на карточке сотворения (AA анимирует каждое сообщение с предметом). Нет AA или записи — без анимации. */
+async function appearFx(item, tokenUuid) {
+  try {
+    const aa = game.modules.get("autoanimations")?.active ? globalThis.AutomatedAnimations : null;
+    if (!aa?.playAnimation) return;
+    let t = null;
+    for (let i = 0; i < 10 && !(t = fromUuidSync(tokenUuid)?.object); i++) await new Promise((r) => setTimeout(r, 100));   // токен ещё рисуется у этого клиента
+    if (t) await aa.playAnimation(t, item.clone({ name: L("summon.appearFx", { name: item.name }) }, { keepId: true }), { targets: [t] });
+  } catch (e) { console.warn(`${MOD} | summon appear fx`, e); }
+}
+
+function pickPoint(token, ft, ghost = null, hint = L("summon.place")) {
   token = token?.document ?? token;   // rectCell ждёт ширину в клетках (TokenDocument), у Token на холсте она в пикселях
   return new Promise((resolve) => {
-    const view = canvas.app.view, note = ui.notifications.info(L("summon.place"), { permanent: true });
+    const view = canvas.app.view, note = ui.notifications.info(hint, { permanent: true });
     const s = canvas.grid.size, cell = (ev) => canvas.grid.getTopLeftPoint(canvas.canvasCoordinatesFromClient({ x: ev.clientX, y: ev.clientY }));
     const tooFar = (pt, alt) => ft != null && token && !alt && distanceFt(rectCell(token, s), { x: Math.round(pt.x / s), y: Math.round(pt.y / s), w: ghost?.w ?? 1, h: ghost?.h ?? 1 }, gridFt()) > ft;
     let preview = null;
@@ -456,10 +488,11 @@ async function onClick(message, ev) {
   const ft = itemRange(item, []) ?? o?.range ?? null;
   const base = doneOf(message);
   for (let i = 0; i < pick.qty; i++) {
-    const pt = await pickPoint(token, ft, o ? { src: TREE, w: 1, h: 1 } : info.result.list.find((c) => c.uuid === pick.uuid)?.token ?? null);
+    const pt = await pickPoint(token, ft, o ? { src: artFlag(message)?.src ?? TREE, w: 1, h: 1, scale: artFlag(message)?.scale ?? 1 } : info.result.list.find((c) => c.uuid === pick.uuid)?.token ?? null, o ? L("summon.placeWhere", { name: esc(item.name) }) : undefined);
     if (!pt) return;
     const res = await callGM("summonCreate", message.id, pick.uuid, base + i, { sceneId: scene.id, x: pt.x, y: pt.y, force: pt.force && game.user.isGM });
     const r = res?.result;
+    if (o && r?.ok && !r.dup) appearFx(item, r.token);
     if (!res?.ok || !r?.ok) return void (r?.reason && ["nested", "cap", "noSpot", "noToken", "pick", "order", "far"].includes(r.reason) ? warn(r.reason, { max: LIMIT, ft: r.ft }) : globalThis.ui.notifications.warn(L("chat.failed", { reason: res?.reason ?? r?.reason })));
   }
 }
@@ -488,6 +521,7 @@ export const handlers = {
 
 export function init() {
   Hooks.on("renderChatMessageHTML", bind);
+  Hooks.on("createChatMessage", prefetchArt);
   Hooks.on("deleteItem", (item) => { onAnchorDeleted(item).catch((e) => console.error(`${MOD} | summon.anchor`, e)); });
   Hooks.on("deleteToken", (t) => { onTokenDeleted(t).catch((e) => console.error(`${MOD} | summon.token`, e)); });
   Hooks.on("updateActor", (a, ch) => { if (foundry.utils.hasProperty(ch, "system.attributes.hp") && a.token) maybeBanish(a.token).catch((e) => console.error(`${MOD} | summon.banish`, e)); });

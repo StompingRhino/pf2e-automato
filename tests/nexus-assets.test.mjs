@@ -65,3 +65,12 @@ test("findAsset: не-ГМ — disabled", async () => {
   assert.deepEqual(await findAsset(ENTRIES, { env: mkEnv() }), { reason: "disabled" });
   globalThis.game.user.isGM = true;
 });
+
+test("findAsset: файл уже на диске — без каталога; нет на диске — каталог", async () => {
+  let env = { ...mkEnv(), probe: async (id) => `disk/${id}.webp` };
+  assert.deepEqual(await findAsset(ENTRIES, { env, rnd: () => 0 }), { src: "disk/d/Tree_Green_A1_6x6.webp", scale: 2 });
+  assert.equal(env.calls.kind, null);   // каталог не открывался
+  env = { ...mkEnv({ items: [{ id: "f/Tree_Multicolor2_A1_6x6" }] }), probe: async () => null };
+  assert.deepEqual(await findAsset(ENTRIES, { env, rnd: () => 0.99 }), { src: "fa/f/Tree_Multicolor2_A1_6x6.webp", scale: 2 });
+  assert.deepEqual(env.calls.list, ["Tree_Multicolor2_A1_6x6"]);
+});

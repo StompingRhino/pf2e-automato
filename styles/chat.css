@@ -100,7 +100,7 @@ a.inline-check.paf-check-text > i { display: none; }
 
 /* Удержанная/отменённая атака (scripts/hold.mjs): плашка в карточке атаки */
 /* Сотворение, удержанное/сорванное контрзаклинанием (hold.mjs, damage-gate.mjs): кнопки pf2e и модуля скрыты классом на корне сообщения, плашка .paf-hold остаётся */
-.paf-counter-block :is(.card-buttons, .message-buttons, .spell-button, .damage-application, .paf-damage-box, .paf-area-box, .paf-maneuver-box, .pf2e-automato, .pf2e-toolbelt-target-targetRows) { display: none !important; }
+.paf-counter-block :is(.card-buttons, .message-buttons, .spell-button, .damage-application, .paf-damage-box, .paf-area-box, .paf-maneuver-box, .paf-summon-box, .pf2e-automato, .pf2e-toolbelt-target-targetRows) { display: none !important; }
 .paf-counter-block :is(a.inline-roll, a.inline-check, a.roll-link, a.effect-area, a[data-action]) { pointer-events: none; opacity: .6; }
 .paf-hold { margin: 4px 0; padding: 4px 8px; border: 1px solid #baa991; border-radius: 3px; background: #f8f4f1; color: #5e0000; font-style: italic; }
 .paf-hold p { margin: 0; }
@@ -139,24 +139,24 @@ a.inline-check.paf-check-text > i { display: none; }
    - шаг: залит бордовым, во всю строку от 36px — только явный список ниже (одна кнопка в один момент, CLAUDE.md §3.2);
    - отмена: ссылка.
    Порядок правил важен: вариант -> размер -> шаг; веса селекторов внутри каждой группы одинаковые. Вкладка листа (.tab.automato) и окна (.paf-dialog) не задеты. */
-.chat-message :is(.pf2e-automato, .paf-damage-box, .paf-area-box, .paf-recharge-box, .paf-card-actions) button,
+.chat-message :is(.pf2e-automato, .paf-damage-box, .paf-area-box, .paf-recharge-box, .paf-summon-box, .paf-maneuver-box, .paf-card-actions) button,
 .chat-message .chat-card button:is([data-action=spell-variant], [data-action=spell-template], [data-action=spell-save], [data-action^=spell-attack], [data-action=spell-damage], [data-action=spell-counteract]) {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: auto; height: 28px; min-height: 0; margin: 0; padding: 0 10px;
   font: 600 13px/1.2 Roboto, system-ui, sans-serif; text-align: center; white-space: nowrap; text-transform: none;
   color: #5e0000; background: #fffdf9; border: 1px solid #5e0000; border-radius: 3px; box-shadow: none; cursor: pointer;
   transition: background-color .15s, border-color .15s;
 }
-.chat-message :is(.pf2e-automato, .paf-damage-box, .paf-area-box, .paf-recharge-box, .paf-card-actions) button i { font-size: 13px; }
-.chat-message :is(.pf2e-automato, .paf-damage-box, .paf-area-box, .paf-recharge-box, .paf-card-actions) button:hover:not(:disabled, [aria-disabled="true"]),
+.chat-message :is(.pf2e-automato, .paf-damage-box, .paf-area-box, .paf-recharge-box, .paf-summon-box, .paf-maneuver-box, .paf-card-actions) button i { font-size: 13px; }
+.chat-message :is(.pf2e-automato, .paf-damage-box, .paf-area-box, .paf-recharge-box, .paf-summon-box, .paf-maneuver-box, .paf-card-actions) button:hover:not(:disabled, [aria-disabled="true"]),
 .chat-message .chat-card button:is([data-action=spell-variant], [data-action^=spell-attack-]):hover:not(:disabled) { color: #5e0000; background: #f3e6e1; border-color: #7a1414; box-shadow: none; }
-.chat-message :is(.pf2e-automato, .paf-damage-box, .paf-area-box, .paf-recharge-box, .paf-card-actions) button:focus-visible,
+.chat-message :is(.pf2e-automato, .paf-damage-box, .paf-area-box, .paf-recharge-box, .paf-summon-box, .paf-maneuver-box, .paf-card-actions) button:focus-visible,
 .chat-message .chat-card button[data-action^=spell-]:focus-visible { outline: 2px solid #171f69; outline-offset: 2px; }
-.chat-message :is(.pf2e-automato, .paf-damage-box, .paf-area-box, .paf-recharge-box, .paf-card-actions) button:disabled { opacity: .5; cursor: not-allowed; }
+.chat-message :is(.pf2e-automato, .paf-damage-box, .paf-area-box, .paf-recharge-box, .paf-summon-box, .paf-maneuver-box, .paf-card-actions) button:disabled { opacity: .5; cursor: not-allowed; }
 /* скрытая кнопка шага остаётся скрытой при display:flex выше */
-.chat-message :is(.pf2e-automato, .paf-damage-box, .paf-area-box, .paf-recharge-box, .paf-card-actions, .chat-card) [hidden] { display: none !important; }
+.chat-message :is(.pf2e-automato, .paf-damage-box, .paf-area-box, .paf-recharge-box, .paf-summon-box, .paf-maneuver-box, .paf-card-actions, .chat-card) [hidden] { display: none !important; }
 
 /* размер: кнопки-действия — во всю строку, от 36px, длинная подпись переносится; кнопки строк целей и «Ввести СЛ» остаются 28px */
-.chat-message :is(.paf-damage-box, .paf-area-box, .paf-recharge-box, .paf-bd-actions, .paf-card-actions, .paf-bulk, .paf-note, .spell-button) > button,
+.chat-message :is(.paf-damage-box, .paf-area-box, .paf-recharge-box, .paf-summon-box, .paf-maneuver-box, .paf-bd-actions, .paf-card-actions, .paf-bulk, .paf-note, .spell-button) > button,
 .chat-message .chat-card button:is([data-action=spell-variant], [data-action=spell-template], [data-action=spell-save], [data-action=spell-damage], [data-action=spell-counteract]) {
   display: flex; width: 100%; min-height: 36px; height: auto; padding: 6px 10px; white-space: normal;
 }
@@ -164,14 +164,14 @@ a.inline-check.paf-check-text > i { display: none; }
 .chat-message .chat-card button:is([data-action=spell-variant], [data-action=spell-template], [data-action=spell-save], [data-action=spell-damage], [data-action=spell-counteract]) { margin: 0 0 6px; }
 .chat-message .chat-card .spell-attack-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 0 6px; }   /* «Атака» — шаг во всю строку, две со штрафом — пополам под ней */
 .chat-message .chat-card .spell-attack-buttons button { width: 100%; min-height: 36px; margin: 0 0 6px; }
-.chat-message :is(.paf-damage-box, .paf-area-box, .paf-recharge-box, .pf2e-automato .paf-bulk) { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5em, 1fr)); gap: 6px; margin-top: 8px; }
+.chat-message :is(.paf-damage-box, .paf-area-box, .paf-recharge-box, .paf-summon-box, .paf-maneuver-box, .pf2e-automato .paf-bulk) { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5em, 1fr)); gap: 6px; margin-top: 8px; }
 .chat-message .pf2e-automato .paf-bulk > :is(.paf-pending, button:not(.paf-ghost)) { grid-column: 1 / -1; }
 .chat-message .pf2e-automato > .spell-button { margin-top: 8px; }
 .chat-message .pf2e-automato .paf-head button { margin-left: 6px; }
 .chat-message .pf2e-automato .paf-dc-input { height: 28px; }
 
 /* шаг — залит, явный список. Шаги блока модуля («Применить всё», «применить сразу», зона, дозапуск) залиты, только пока на карточке нет видимого шага урона — иначе две заливки сразу */
-.chat-message :is(.paf-damage-box, .paf-area-box, .paf-bd-actions, .paf-card-actions) > button:only-of-type,
+.chat-message :is(.paf-damage-box, .paf-area-box, .paf-summon-box, .paf-maneuver-box, .paf-bd-actions, .paf-card-actions) > button:only-of-type,
 .chat-message .paf-bd-actions > button.paf-main,
 .chat-message .pf2e-automato > .spell-button > button,
 .chat-message .pf2e-automato:not(:has(.paf-damage-box button:not([hidden]), > .spell-button > button:not([hidden]))) .paf-note > button:is([data-action=apply-use], [data-action=resume], [data-action=create-zone], [data-action=use-reaction]),
@@ -179,7 +179,7 @@ a.inline-check.paf-check-text > i { display: none; }
 .chat-message .chat-card button:is([data-action=spell-template], [data-action=spell-save], [data-action=spell-attack], [data-action=spell-damage], [data-action=spell-counteract]) {
   grid-column: 1 / -1; color: #fff; background: #5e0000; border-color: #5e0000;
 }
-.chat-message :is(.paf-damage-box, .paf-area-box, .paf-bd-actions, .paf-card-actions) > button:only-of-type:hover:not(:disabled),
+.chat-message :is(.paf-damage-box, .paf-area-box, .paf-summon-box, .paf-maneuver-box, .paf-bd-actions, .paf-card-actions) > button:only-of-type:hover:not(:disabled),
 .chat-message .paf-bd-actions > button.paf-main:hover:not(:disabled),
 .chat-message .pf2e-automato > .spell-button > button:hover:not(:disabled),
 .chat-message .pf2e-automato:not(:has(.paf-damage-box button:not([hidden]), > .spell-button > button:not([hidden]))) .paf-note > button:is([data-action=apply-use], [data-action=resume], [data-action=create-zone], [data-action=use-reaction]):hover:not(:disabled),

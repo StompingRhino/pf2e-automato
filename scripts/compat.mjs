@@ -1,4 +1,5 @@
 import { S } from "./settings.mjs";
+import { isActiveGM, whenSettled } from "./util.mjs";
 
 const AUTOMATIONS = "pf2e-automations";
 // Предикат pf2e-automations матчится по roll options сообщения: item:slug:x, origin:item:x, consumable:x, action:x, feat:x ...
@@ -55,6 +56,20 @@ export function init() {
   // реестр pf2e-automations меняется их настройкой -> сброс индекса
   Hooks.on("updateSetting", (setting) => { if (setting.key === `${AUTOMATIONS}.rulesV3`) index = null; });
   Hooks.on("createSequencerEffect", teleportGhost);
+  game.settings.register("pf2e-automato", "aaAnimations", { scope: "world", config: false, type: Number, default: 0 });   // слитый в AA номер набора animations/aa-autorec.json
+}
+
+/** Анимации модуля — записи Automated Animations (animations/aa-autorec.json, формат экспорта AA). Активный ГМ сливает их штатным mergeMenus
+ *  (добавляет только записи с новыми названиями, правки ГМа не трогает) один раз на номер набора `set`: удалённую ГМом запись не возвращаем при каждой загрузке. */
+async function mergeAnimations() {
+  const AM = game.modules.get("autoanimations")?.active ? globalThis.AutomatedAnimations?.AutorecManager : null;
+  await whenSettled();   // лидер вкладок ГМа выбирается после ready
+  if (!AM?.mergeMenus || !isActiveGM()) return;
+  const data = await (await fetch(foundry.utils.getRoute("modules/pf2e-automato/animations/aa-autorec.json"))).json();
+  if (game.settings.get("pf2e-automato", "aaAnimations") >= data.set) return;
+  if (data.version !== AM.getAutorecEntries().version) return void console.warn("pf2e-automato | animations: схема AA", AM.getAutorecEntries().version, "≠", data.version);
+  await AM.mergeMenus(data, { submitAll: true });
+  await game.settings.set("pf2e-automato", "aaAnimations", data.set);
 }
 
 /** Пресет «Телепортация» A-A: у выбирающего — заметный круг дальности (у A-A тонкая линия) и полупрозрачный токен за курсором — там, куда A-A его поставит. */
@@ -153,6 +168,7 @@ async function selfCheck() {
 
 export function ready() {
   index = null; getIndex(); selfCheck().catch((e) => console.warn("pf2e-automato | selfCheck", e));
+  mergeAnimations().catch((e) => console.warn("pf2e-automato | animations", e));
   // модули несовместимы (module.json conflicts): оба включены — каждый предмет обрабатывается дважды
   if (game.user.isGM && game.modules.get(AUTOMATIONS)?.active) ui.notifications.warn(game.i18n.localize("PF2E_AUTOMATO.builtin.automationsConflict"), { permanent: true });
 }
