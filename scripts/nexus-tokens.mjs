@@ -1,6 +1,6 @@
-// Токены из FA Nexus (необязательно, у ГМа): ступень 1 — уже скачанные файлы в папке Nexus, ступень 2 (настройка) — бесплатный каталог Nexus.
+// Токены из FA Nexus (необязательно, у ГМа): ступень 1 — уже скачанные файлы в папке Nexus, ступень 2 — бесплатный каталог Nexus (findToken — ядро; призыв и формы — его потребители).
 // Публичного API у Nexus нет — внутренние модули импортируются динамически, под проверенную версию (compat.EXTERNAL.verified["fa-nexus"]).
-import { MOD, debug } from "./util.mjs";
+import { MOD, debug, queue } from "./util.mjs";
 import { EXTERNAL } from "./compat.mjs";
 
 const IMG = /\.(webp|png|jpe?g|avif|gif)$/i;
@@ -45,8 +45,13 @@ export function creatureNames(actor) {
   return [...new Set(raw.map((s) => String(s ?? "").trim()).filter((s) => words(s).length))];
 }
 
-const verified = () => { const m = game.modules.get("fa-nexus"); return !!m?.active && String(m.version).split(".").slice(0, 2).join(".") === EXTERNAL.verified["fa-nexus"]; };
+const nexusState = () => {
+  const m = game.modules.get("fa-nexus");
+  if (!m?.active) return "no-nexus";
+  return String(m.version).split(".").slice(0, 2).join(".") === EXTERNAL.verified["fa-nexus"] ? "ok" : "unverified";
+};
 const dirOf = () => { try { return game.settings.get("fa-nexus", EXTERNAL.nexus.dirSetting) || EXTERNAL.nexus.dirDefault; } catch { return EXTERNAL.nexus.dirDefault; } };
+const settingOn = (key) => { try { return !!game.settings.get(MOD, key); } catch { return false; } };
 
 async function browseAll(dir, depth = 3) {
   const FP = foundry.applications.apps.FilePicker.implementation;
@@ -60,49 +65,114 @@ async function browseAll(dir, depth = 3) {
   return out;
 }
 
-async function fromCatalog(names, dir) {
+let files = null;   // скачанные файлы Nexus за сессию
+const localFiles = async () => (files ??= await browseAll(dirOf()).catch(() => []));
+
+// ponytail: только free — премиум требует OAuth-state Nexus (приватный), модуль его не читает; добавить, если у Nexus появится публичный API
+let synced = false;   // каталог ассетов пуст до svc.sync("assets"): один раз за сессию
+async function openCatalog(kind = "tokens") {
   const base = `modules/fa-nexus/scripts/content`;
   const { NexusContentService } = await import(foundry.utils.getRoute(`${base}/nexus-content-service.js`));
   const { NexusDownloadManager } = await import(foundry.utils.getRoute(`${base}/nexus-download-manager.js`));
   const svc = new NexusContentService();
-  try {
-    // каталог синхронизируется самим Nexus (его окно); пустой — молча null
-    const { items } = await svc.list("tokens", { text: words(names[0]).sort((a, b) => b.length - a.length)[0], tier: "free" });
-    const item = bestMatch(items ?? [], names, (x) => x.filename ?? x.file_path ?? "");
-    if (!item) return null;
-    // ponytail: только free — премиум требует OAuth-state Nexus (приватный), добавить, если у Nexus появится публичный API
-    const url = await svc.getFullURL("tokens", item);
-    return (await new NexusDownloadManager().ensureLocal("tokens", item, url, { forceDownload: true })) || null;
-  } finally { try { svc.destroy(); } catch { /* noop */ } }
+  if (kind === "assets" && !synced) { await svc.sync("assets"); synced = true; }
+  return {
+    list: async (text) => (await svc.list(kind, { text, tier: "free" })).items ?? [],
+    any: async () => ((await svc.list(kind, { tier: "free", limit: 1 })).items ?? []).length > 0,
+    download: async (item) => (await new NexusDownloadManager().ensureLocal(kind, item, await svc.getFullURL(kind, item), { forceDownload: true })) || null,
+    thumb: (item) => svc.getThumbnailURL(kind, item),
+    close: () => { try { svc.destroy(); } catch { /* noop */ } },
+  };
 }
 
-let files = null;   // скачанные файлы Nexus за сессию (окно выбора зовёт подбор на каждое существо списка)
-const localFiles = async () => (files ??= await browseAll(dirOf()).catch(() => []));
+const defaultEnv = () => ({ enabled: (key) => !key || settingOn(key), state: nexusState, local: localFiles, openCatalog, forget: () => { files = null; } });
+
+// stop-слова: «Dragon_Skeleton» — не «Dragon»; файл с таким словом годится, только если оно есть в одном из имён
+const STOP = new Set(["skeleton", "skeletal", "spirit", "zombie", "ghost"]);
+const stopOk = (file, names) => !words(String(file).split("/").pop()).some((w) => STOP.has(w) && !names.some((n) => words(n).includes(w)));
+
+/** Чистая: масштаб токена из имени файла Nexus (`..._Scale130_...` -> 1.3, не больше 3); нет — 1. */
+export const scaleOf = (file) => { const m = /_Scale(\d{2,3})(?=[_.])/i.exec(String(file ?? "")); return m ? Math.min(3, Number(m[1]) / 100) : 1; };
+
+/** Чистая: лучший файл из списка, подходящий по любому из имён; стоп-слова отсеяны, файлам из `/Creatures/` — предпочтение. */
+export function pickFile(list, names, key = (x) => x) {
+  const ok = list.filter((x) => stopOk(key(x), names));
+  return bestMatch(ok.filter((x) => /(^|\/)Creatures\//i.test(key(x))), names, key) ?? bestMatch(ok, names, key);
+}
+
+const downloads = new Map();   // путь записи каталога -> Promise локального пути (один файл не качается дважды)
+
+/**
+ * Файл токена по списку имён (по убыванию предпочтения): сначала скачанные, затем бесплатный каталог Nexus.
+ * -> { src, scale } | { reason } где reason: disabled | no-nexus | unverified | catalog-empty | offline | not-found.
+ * opts: download (по умолчанию true; false — только локальные, тогда нет файла = not-found), setting (ключ мировой настройки-выключателя, по умолчанию "formTokens"; null — без проверки),
+ * env — подмена окружения для тестов. Сбой подбора никогда не бросает исключение. Зовёт активный ГМ.
+ */
+export async function findToken(names, { download = true, setting = "formTokens", env = defaultEnv() } = {}) {
+  try {
+    if (!game.user?.isGM || !env.enabled(setting)) return { reason: "disabled" };
+    const state = env.state();
+    if (state !== "ok") return { reason: state };
+    names = [...new Set((names ?? []).filter((n) => words(n).length))];
+    if (!names.length) return { reason: "not-found" };
+    const done = (src) => ({ src, scale: scaleOf(src) });
+    const hit = pickFile(await env.local(), names);
+    if (hit) return done(hit);
+    if (!download) return { reason: "not-found" };
+    const cat = await env.openCatalog();
+    try {
+      let item = null;
+      for (const n of names) {
+        const text = words(n).sort((a, b) => b.length - a.length)[0];
+        if (!text || /[Ѐ-ӿ]/.test(n)) continue;
+        item = pickFile(await cat.list(text), names, catKey);
+        if (item) break;
+      }
+      if (!item) return { reason: (await cat.any()) ? "not-found" : "catalog-empty" };
+      const id = catKey(item);
+      const got = await queue(`form-token:download:${id}`, () => {
+        if (!downloads.has(id)) downloads.set(id, cat.download(item).catch((e) => { downloads.delete(id); throw e; }));
+        return downloads.get(id);
+      });
+      if (!got) return { reason: "offline" };
+      env.forget();   // скачан новый файл — список заново при следующем подборе
+      return done(got);
+    } finally { cat.close(); }
+  } catch (e) { debug("findToken", e); return { reason: "offline" }; }
+}
+
+/** Ключ записи каталога FA: у Nexus 0.6 полей filename/file_path нет — путь без расширения лежит в id («Creatures/Beast/Mammals/Ape_A1_…_01»). */
+export const catKey = (x) => String(x?.filename ?? x?.file_path ?? x?.id ?? "");
+
+/** Превью бесплатного каталога для окна выбора формы (без скачивания): имена -> [{ name, file, thumb }] только найденные; любой сбой — []. Зовёт активный ГМ. */
+export async function catalogThumbs(names, { setting = "formTokens", env = defaultEnv() } = {}) {
+  try {
+    if (!game.user?.isGM || !env.enabled(setting) || env.state() !== "ok") return [];
+    const cat = await env.openCatalog(), out = [];
+    try {
+      for (const name of names) {
+        const text = words(name).sort((a, b) => b.length - a.length)[0];
+        const item = text ? pickFile(await cat.list(text), [name], catKey) : null;
+        if (item) out.push({ name, file: catKey(item).split("/").pop(), thumb: cat.thumb(item) });
+      }
+    } finally { cat.close(); }
+    return out;
+  } catch (e) { debug("catalogThumbs", e); return []; }
+}
 
 /** Портреты для окна выбора: [{ names }] -> [путь|null] — только уже скачанные файлы Nexus (без сети); тот же подбор, что у токена на сцене. */
 export async function nexusArt(entries) {
   try {
-    if (!game.user?.isGM || !verified()) return entries.map(() => null);
+    if (!game.user?.isGM || nexusState() !== "ok") return entries.map(() => null);
     const have = await localFiles();
     return entries.map((e) => (e.names?.length ? bestMatch(have, e.names) : null));
   } catch (e) { debug("nexusArt", e); return entries.map(() => null); }
 }
 
-/** Путь к файлу токена из Nexus для существа или null (любой сбой — null). Зовёт активный ГМ. */
+/** Путь к файлу токена из Nexus для существа или null (любой сбой — null). Зовёт активный ГМ. Призыв: скачивание — настройка nexusTokens. */
 export async function nexusToken(actor) {
-  try {
-    if (!game.user?.isGM || !verified()) return null;
-    const names = creatureNames(actor);
-    if (!names.length) return null;
-    const dir = dirOf();
-    const have = await localFiles();
-    const hit = bestMatch(have, names);
-    if (hit) return hit;
-    if (!game.settings.get(MOD, "nexusTokens")) return null;
-    const got = await fromCatalog(names, dir);
-    if (got) files = null;   // скачан новый файл — список заново при следующем подборе
-    return got;
-  } catch (e) { debug("nexusToken", e); return null; }
+  const r = await findToken(creatureNames(actor), { download: settingOn("nexusTokens"), setting: null });
+  return r.src ?? null;
 }
 
 export function init() {

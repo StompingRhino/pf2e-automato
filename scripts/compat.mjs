@@ -92,7 +92,7 @@ function teleportGhost(effect) {
  * (двойной путь к урону, §3.5), поэтому все они — здесь, а при ready проверяются (selfCheck). verified — major.minor, под которые проверено.
  */
 export const EXTERNAL = {
-  verified: { pf2e: "8.7", "pf2e-toolbelt": "3.61", "xdy-pf2e-workbench": "7.7", "pf2e-auto-action-tracker": "0.19", "fa-nexus": "0.5" },
+  verified: { pf2e: "8.7", "pf2e-toolbelt": "3.61", "xdy-pf2e-workbench": "7.7", "pf2e-auto-action-tracker": "0.19", "fa-nexus": "0.6" },
   // FA Nexus (nexus-tokens.mjs): настройка папки скачанных токенов (scripts/settings.js) и её значение по умолчанию
   nexus: { dirSetting: "cloudDownloadDirTokens", dirDefault: "fa-nexus-tokens" },
   selectors: {

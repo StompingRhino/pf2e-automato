@@ -9,6 +9,7 @@ import { resetIndex, shouldYield } from "../compat.mjs";
 import { slugOf } from "../rules.mjs";
 import { NO_REACTIONS } from "../workshop/effect.mjs";
 import { mechOf } from "../mech.mjs";
+import { addFormToken } from "../form-token.mjs";
 
 /** Подгруппа A «вид скорости на это перемещение» (8 фитов, pf2e 8.6.1): у каждого toggleable RollOption + BaseSpeed fly под ней; опция = slug фита. */
 export const FLIGHT = ["take-wing", "take-flight", "soaring-flight", "fledgling-flight", "winglet-flight", "evanescent-wings", "dragons-flight", "benefactors-wings"];
@@ -71,6 +72,7 @@ export function wrapRules(wrapped, ...args) {
   const rules = wrapped(...args);
   try {
     addPermanent(rules, args[0]);
+    addFormToken(rules, args[0]);   // токен боевой формы (form-token.mjs)
     const own = owned();
     if (!own.size) return rules;
     for (const r of rules) {

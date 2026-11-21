@@ -1,0 +1,496 @@
+{
+ "pf2eVersion": "8.6.1",
+ "effects": 63,
+ "variants": 147,
+ "wrappers": {
+  "spell-effect-animal-form": [
+   "spell-effect-animal-form-ape",
+   "spell-effect-animal-form-bear",
+   "spell-effect-animal-form-bull",
+   "spell-effect-animal-form-canine",
+   "spell-effect-animal-form-cat",
+   "spell-effect-animal-form-deer",
+   "spell-effect-animal-form-frog",
+   "spell-effect-animal-form-shark",
+   "spell-effect-animal-form-snake"
+  ],
+  "spell-effect-dinosaur-form": [
+   "spell-effect-dinosaur-form-ankylosaurus",
+   "spell-effect-dinosaur-form-brontosaurus",
+   "spell-effect-dinosaur-form-deinonychus",
+   "spell-effect-dinosaur-form-stegosaurus",
+   "spell-effect-dinosaur-form-triceratops",
+   "spell-effect-dinosaur-form-tyrannosaurus"
+  ]
+ },
+ "list": [
+  {
+   "slug": "effect-a-little-bird-told-me",
+   "pack": "feat-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "effect-boar-form",
+   "pack": "campaign-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "effect-ouroboros-buckles-swarm-of-snakes",
+   "pack": "equipment-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "effect-rampaging-form",
+   "pack": "feat-effects",
+   "battleForms": 2,
+   "predicatedForms": true
+  },
+  {
+   "slug": "effect-tiger-form",
+   "pack": "campaign-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "effect-worm-form",
+   "pack": "feat-effects",
+   "battleForms": 2,
+   "choiceFlag": "wormForm",
+   "choices": [
+    "purple-worm",
+    "hybrid"
+   ]
+  },
+  {
+   "slug": "spell-effect-aberrant-form",
+   "pack": "spell-effects",
+   "battleForms": 4,
+   "choiceFlag": null,
+   "choices": [
+    "chuul",
+    "gogiteth",
+    "gug",
+    "ofalth"
+   ]
+  },
+  {
+   "slug": "spell-effect-aerial-form",
+   "pack": "spell-effects",
+   "battleForms": 4,
+   "choiceFlag": null,
+   "choices": [
+    "bat",
+    "bird",
+    "pterosaur",
+    "wasp"
+   ]
+  },
+  {
+   "slug": "spell-effect-angel-form",
+   "pack": "spell-effects",
+   "battleForms": 4,
+   "choiceFlag": null,
+   "choices": [
+    "balisse",
+    "choral",
+    "kuribu",
+    "tennin"
+   ]
+  },
+  {
+   "slug": "spell-effect-angel-form-monadic-deva",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-angel-form-movanic-deva",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-animal-form-ape",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-animal-form-bear",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-animal-form-bull",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-animal-form-canine",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-animal-form-cat",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-animal-form-crab",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-animal-form-crocodile",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-animal-form-deer",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-animal-form-frog",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-animal-form-orca",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-animal-form-seal",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-animal-form-shark",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-animal-form-snake",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-cosmic-form",
+   "pack": "spell-effects",
+   "battleForms": 1,
+   "choiceFlag": null,
+   "choices": [
+    "moon",
+    "sun"
+   ]
+  },
+  {
+   "slug": "spell-effect-daemon-form",
+   "pack": "spell-effects",
+   "battleForms": 4,
+   "choiceFlag": null,
+   "choices": [
+    "lacridaemon",
+    "leukodaemon",
+    "meladaemon",
+    "venedaemon"
+   ]
+  },
+  {
+   "slug": "spell-effect-daemon-form-ceustodaemon",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-daemon-form-piscodaemon",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-demon-form",
+   "pack": "spell-effects",
+   "battleForms": 2,
+   "choiceFlag": null,
+   "choices": [
+    "abrikandilu",
+    "brimorak",
+    "kithangian",
+    "vloriak"
+   ]
+  },
+  {
+   "slug": "spell-effect-demon-form-babau",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-demon-form-hezrou",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-demon-form-nabasu",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-demon-form-vrock",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-devil-form",
+   "pack": "spell-effects",
+   "battleForms": 4,
+   "choiceFlag": null,
+   "choices": [
+    "coarti",
+    "levaloch",
+    "sarglagon",
+    "vordine"
+   ]
+  },
+  {
+   "slug": "spell-effect-devil-form-barbazu",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-devil-form-erinys",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-devil-form-osyluth",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-devouring-dark-form",
+   "pack": "spell-effects",
+   "battleForms": 4,
+   "choiceFlag": null,
+   "choices": [
+    "tentacle",
+    "shark",
+    "water-elemental",
+    "cave-worm",
+    "sea-serpent"
+   ]
+  },
+  {
+   "slug": "spell-effect-dinosaur-form-ankylosaurus",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-dinosaur-form-brontosaurus",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-dinosaur-form-deinonychus",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-dinosaur-form-stegosaurus",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-dinosaur-form-triceratops",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-dinosaur-form-tyrannosaurus",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-dragon-form",
+   "pack": "spell-effects",
+   "battleForms": 1,
+   "choiceFlag": "dragonForm",
+   "choices": [
+    "adamantine",
+    "barrage",
+    "bog",
+    "brine",
+    "cinder",
+    "cloud",
+    "conspirator",
+    "coral",
+    "crystal",
+    "delight",
+    "despair",
+    "diabolic",
+    "empyreal",
+    "executor",
+    "forest",
+    "fortune",
+    "horned",
+    "magma",
+    "mirage",
+    "mocking",
+    "oath",
+    "omen",
+    "phase",
+    "requiem",
+    "resurrection",
+    "rime",
+    "rune",
+    "sage",
+    "sea",
+    "sky",
+    "sovereign",
+    "stormcrown",
+    "time",
+    "umbral",
+    "underworld",
+    "vizier",
+    "vorpal",
+    "wailing",
+    "whisper",
+    "wish"
+   ]
+  },
+  {
+   "slug": "spell-effect-element-embodied-air",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-element-embodied-earth",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-element-embodied-fire",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-element-embodied-metal",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-element-embodied-water",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-element-embodied-wood",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-elemental-form",
+   "pack": "spell-effects",
+   "battleForms": 6,
+   "choiceFlag": "spellEffectElementalForm",
+   "choices": [
+    "air",
+    "earth",
+    "fire",
+    "metal",
+    "water",
+    "wood"
+   ]
+  },
+  {
+   "slug": "spell-effect-elephant-form",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-fey-form",
+   "pack": "spell-effects",
+   "battleForms": 5,
+   "choiceFlag": null,
+   "choices": [
+    "dryad",
+    "elananx",
+    "naiad",
+    "redcap",
+    "unicorn"
+   ]
+  },
+  {
+   "slug": "spell-effect-insect-form",
+   "pack": "spell-effects",
+   "battleForms": 6,
+   "choiceFlag": null,
+   "choices": [
+    "ant",
+    "beetle",
+    "centipede",
+    "mantis",
+    "scorpion",
+    "spider"
+   ]
+  },
+  {
+   "slug": "spell-effect-monstrosity-form",
+   "pack": "spell-effects",
+   "battleForms": 3,
+   "choiceFlag": null,
+   "choices": [
+    "cave-worm",
+    "phoenix",
+    "sea-serpent"
+   ]
+  },
+  {
+   "slug": "spell-effect-monstrosity-form-kaiju",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-nature-incarnate",
+   "pack": "spell-effects",
+   "battleForms": 2,
+   "choiceFlag": "natureIncarnate",
+   "choices": [
+    "green-man",
+    "kaiju"
+   ]
+  },
+  {
+   "slug": "spell-effect-ooze-form",
+   "pack": "spell-effects",
+   "battleForms": 4,
+   "choiceFlag": null,
+   "choices": [
+    "black-pudding",
+    "gelatinous-cube",
+    "gray-ooze",
+    "ochre-jelly"
+   ]
+  },
+  {
+   "slug": "spell-effect-pest-form",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-plant-form",
+   "pack": "spell-effects",
+   "battleForms": 2,
+   "choiceFlag": null,
+   "choices": [
+    "arboreal",
+    "flytrap"
+   ]
+  },
+  {
+   "slug": "spell-effect-primal-herd",
+   "pack": "spell-effects",
+   "battleForms": 1
+  },
+  {
+   "slug": "spell-effect-sacred-form",
+   "pack": "spell-effects",
+   "battleForms": 1
+  }
+ ]
+}

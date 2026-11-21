@@ -1,0 +1,188 @@
+{
+ "doc": "Ключи поиска токена по формам pf2e (plan-battleform-tokens.md §4.2): английские имена существ по убыванию предпочтения. bySlug[slug эффекта] / byChoice[slug][значение ChoiceSet; у дракона dragonType]. Значение: массив имён | {none: причина} — нет подходящего существа | {pick: [имена-кандидаты], note} — вариант выбирает игрок. Драконы: цвет — эвристика по теме типа (FA рисует только классические цвета и Twilight), общий Dragon — запасной.",
+ "bySlug": {
+  "effect-a-little-bird-told-me": ["Sparrow","Finch","Bird","Raven"],
+  "effect-boar-form": ["Boar"],
+  "effect-ouroboros-buckles-swarm-of-snakes": ["Snake Swarm","Giant Snake","Snake"],
+  "effect-rampaging-form": ["Fox","Wolf"],
+  "effect-tiger-form": ["Tiger"],
+  "spell-effect-angel-form-monadic-deva": ["Monadic Deva","Deva","Angel"],
+  "spell-effect-angel-form-movanic-deva": ["Movanic Deva","Deva","Angel"],
+  "spell-effect-animal-form-ape": ["Gorilla","Ape"],
+  "spell-effect-animal-form-bear": ["Black Bear","Bear","Brown Bear"],
+  "spell-effect-animal-form-bull": ["Bull","Bison","Cow"],
+  "spell-effect-animal-form-canine": ["Wolf","Dog"],
+  "spell-effect-animal-form-cat": ["Panther","Tiger","Lion","Lynx","Cat"],
+  "spell-effect-animal-form-crab": ["Giant Crab","Crab"],
+  "spell-effect-animal-form-crocodile": ["Crocodile","Alligator"],
+  "spell-effect-animal-form-deer": ["Deer","Stag","Elk","Moose"],
+  "spell-effect-animal-form-frog": ["Giant Frog","Frog","Toad"],
+  "spell-effect-animal-form-orca": ["Orca","Killer Whale","Whale"],
+  "spell-effect-animal-form-seal": ["Seal","Sea Lion","Walrus"],
+  "spell-effect-animal-form-shark": ["Great White Shark","Shark"],
+  "spell-effect-animal-form-snake": ["Giant Snake","Snake","Viper","Giant Poisonous Snake"],
+  "spell-effect-daemon-form-ceustodaemon": ["Ceustodaemon","Daemon"],
+  "spell-effect-daemon-form-piscodaemon": ["Piscodaemon","Daemon"],
+  "spell-effect-demon-form-babau": ["Babau","Demon"],
+  "spell-effect-demon-form-hezrou": ["Hezrou","Demon"],
+  "spell-effect-demon-form-nabasu": ["Nabasu","Demon"],
+  "spell-effect-demon-form-vrock": ["Vrock","Demon"],
+  "spell-effect-devil-form-barbazu": ["Barbazu","Bearded Devil","Devil"],
+  "spell-effect-devil-form-erinys": ["Erinys","Devil"],
+  "spell-effect-devil-form-osyluth": ["Osyluth","Bone Devil","Devil"],
+  "spell-effect-dinosaur-form-ankylosaurus": ["Ankylosaurus"],
+  "spell-effect-dinosaur-form-brontosaurus": ["Brontosaurus","Apatosaurus","Diplodocus"],
+  "spell-effect-dinosaur-form-deinonychus": ["Deinonychus","Velociraptor","Raptor"],
+  "spell-effect-dinosaur-form-stegosaurus": ["Stegosaurus"],
+  "spell-effect-dinosaur-form-triceratops": ["Triceratops"],
+  "spell-effect-dinosaur-form-tyrannosaurus": ["Tyrannosaurus Rex","Tyrannosaurus","T-Rex"],
+  "spell-effect-element-embodied-air": ["Air Elemental"],
+  "spell-effect-element-embodied-earth": ["Earth Elemental"],
+  "spell-effect-element-embodied-fire": ["Fire Elemental"],
+  "spell-effect-element-embodied-metal": ["Metal Elemental"],
+  "spell-effect-element-embodied-water": ["Water Elemental"],
+  "spell-effect-element-embodied-wood": ["Wood Elemental"],
+  "spell-effect-elephant-form": ["Elephant","Mammoth","Mastodon"],
+  "spell-effect-monstrosity-form-kaiju": ["Kaiju","Tarrasque"],
+  "spell-effect-pest-form": {"pick":["Cat","Rat","Mouse","Raven","Crow","Frog","Toad","Lizard","Spider","Bat","Owl","Weasel","Squirrel","Rabbit","Beetle","Mantis"],"note":"вариант выбирает игрок (§4.6): тип Tiny-животного на усмотрение"},
+  "spell-effect-primal-herd": ["Mammoth","Elephant"],
+  "spell-effect-sacred-form": {"none":"нет существа: облик той же внешности с божественным оружием"}
+},
+ "byChoice": {
+  "effect-worm-form": {
+   "purple-worm": ["Purple Worm"],
+   "hybrid": ["Purple Worm"]
+ },
+  "spell-effect-aberrant-form": {
+   "chuul": ["Chuul"],
+   "gogiteth": ["Gogiteth"],
+   "gug": ["Gug"],
+   "ofalth": ["Ofalth"]
+ },
+  "spell-effect-aerial-form": {
+   "bat": ["Giant Bat","Bat"],
+   "bird": ["Giant Eagle","Eagle","Hawk","Owl","Raven","Bird"],
+   "pterosaur": ["Pteranodon","Pterosaur","Pterodactyl"],
+   "wasp": ["Giant Wasp","Wasp"]
+ },
+  "spell-effect-angel-form": {
+   "balisse": ["Balisse","Angel"],
+   "choral": ["Choral Angel","Choral","Angel"],
+   "kuribu": ["Kuribu","Angel"],
+   "tennin": ["Tennin","Angel"]
+ },
+  "spell-effect-cosmic-form": {
+   "moon": {"none":"нет существа: форма из космической энергии (луна)"},
+   "sun": {"none":"нет существа: форма из космической энергии (солнце)"}
+ },
+  "spell-effect-daemon-form": {
+   "lacridaemon": ["Lacridaemon","Daemon"],
+   "leukodaemon": ["Leukodaemon","Daemon"],
+   "meladaemon": ["Meladaemon","Daemon"],
+   "venedaemon": ["Venedaemon","Daemon"]
+ },
+  "spell-effect-demon-form": {
+   "abrikandilu": ["Abrikandilu","Demon"],
+   "brimorak": ["Brimorak","Demon"],
+   "kithangian": ["Kithangian","Demon"],
+   "vloriak": ["Vloriak","Demon"]
+ },
+  "spell-effect-devil-form": {
+   "coarti": ["Coarti","Devil"],
+   "levaloch": ["Levaloch","Devil"],
+   "sarglagon": ["Sarglagon","Devil"],
+   "vordine": ["Vordine","Devil"]
+ },
+  "spell-effect-devouring-dark-form": {
+   "tentacle": ["Kraken","Tentacle"],
+   "shark": ["Great White Shark","Shark"],
+   "water-elemental": ["Water Elemental"],
+   "cave-worm": ["Cave Worm"],
+   "sea-serpent": ["Sea Serpent"]
+ },
+  "spell-effect-dragon-form": {
+   "adamantine": ["Silver Dragon","Dragon"],
+   "barrage": ["Red Dragon","Dragon"],
+   "bog": ["Green Dragon","Dragon"],
+   "brine": ["Blue Dragon","Dragon"],
+   "cinder": ["Red Dragon","Dragon"],
+   "cloud": ["White Dragon","Dragon"],
+   "conspirator": ["Black Dragon","Dragon"],
+   "coral": ["Bronze Dragon","Dragon"],
+   "crystal": ["Amethyst Dragon","Dragon"],
+   "delight": ["Gold Dragon","Dragon"],
+   "despair": ["Black Dragon","Dragon"],
+   "diabolic": ["Red Dragon","Dragon"],
+   "empyreal": ["Gold Dragon","Dragon"],
+   "executor": ["Silver Dragon","Dragon"],
+   "forest": ["Green Dragon","Dragon"],
+   "fortune": ["Gold Dragon","Dragon"],
+   "horned": ["Brass Dragon","Dragon"],
+   "magma": ["Red Dragon","Dragon"],
+   "mirage": ["Brass Dragon","Dragon"],
+   "mocking": ["Copper Dragon","Dragon"],
+   "oath": ["Silver Dragon","Dragon"],
+   "omen": ["Twilight Dragon","Dragon"],
+   "phase": ["Twilight Dragon","Dragon"],
+   "requiem": ["Black Dragon","Dragon"],
+   "resurrection": ["Gold Dragon","Dragon"],
+   "rime": ["White Dragon","Dragon"],
+   "rune": ["Amethyst Dragon","Dragon"],
+   "sage": ["Copper Dragon","Dragon"],
+   "sea": ["Blue Dragon","Dragon"],
+   "sky": ["Blue Dragon","Dragon"],
+   "sovereign": ["Gold Dragon","Dragon"],
+   "stormcrown": ["Blue Dragon","Dragon"],
+   "time": ["Twilight Dragon","Dragon"],
+   "umbral": ["Black Dragon","Dragon"],
+   "underworld": ["Black Dragon","Dragon"],
+   "vizier": ["Brass Dragon","Dragon"],
+   "vorpal": ["Silver Dragon","Dragon"],
+   "wailing": ["White Dragon","Dragon"],
+   "whisper": ["Twilight Dragon","Dragon"],
+   "wish": ["Gold Dragon","Dragon"]
+ },
+  "spell-effect-elemental-form": {
+   "air": ["Air Elemental"],
+   "earth": ["Earth Elemental"],
+   "fire": ["Fire Elemental"],
+   "metal": ["Metal Elemental"],
+   "water": ["Water Elemental"],
+   "wood": ["Wood Elemental"]
+ },
+  "spell-effect-fey-form": {
+   "dryad": ["Dryad"],
+   "elananx": ["Elananx"],
+   "naiad": ["Naiad","Water Nymph","Nymph"],
+   "redcap": ["Redcap"],
+   "unicorn": ["Unicorn"]
+ },
+  "spell-effect-insect-form": {
+   "ant": ["Giant Ant","Ant"],
+   "beetle": ["Giant Stag Beetle","Stag Beetle","Beetle"],
+   "centipede": ["Giant Centipede","Centipede"],
+   "mantis": ["Giant Mantis","Mantis"],
+   "scorpion": ["Giant Scorpion","Scorpion"],
+   "spider": ["Giant Hunting Spider","Hunting Spider","Giant Spider","Spider"]
+ },
+  "spell-effect-monstrosity-form": {
+   "cave-worm": ["Cave Worm"],
+   "phoenix": ["Phoenix"],
+   "sea-serpent": ["Sea Serpent"]
+ },
+  "spell-effect-nature-incarnate": {
+   "green-man": ["Green Man","Treant"],
+   "kaiju": ["Kaiju","Tarrasque"]
+ },
+  "spell-effect-ooze-form": {
+   "black-pudding": ["Black Pudding"],
+   "gelatinous-cube": ["Gelatinous Cube"],
+   "gray-ooze": ["Gray Ooze"],
+   "ochre-jelly": ["Ochre Jelly"]
+ },
+  "spell-effect-plant-form": {
+   "arboreal": ["Arboreal Regent","Arboreal","Treant"],
+   "flytrap": ["Giant Flytrap","Flytrap"]
+ }
+ }
+}

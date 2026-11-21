@@ -47,6 +47,7 @@ import * as npcInvest from "./npc-invest.mjs";
 import * as animations from "./animations.mjs";
 import * as maneuver from "./maneuver.mjs";
 import * as spiritLink from "./spirit-link.mjs";
+import * as formToken from "../form-token.mjs";
 
 const DIALOG_MS = 180000;
 
@@ -63,7 +64,8 @@ export const BUILTIN = {
   "blood-magic-aberrant": { run: (scope) => scope.message && bloodMagic.onMessage(scope.message), timeoutMs: DIALOG_MS },
   // окно доли добычи (союзник) у игрока-владельца: ГМ шлёт сюда runPlayerBuiltin через askOwner (lib.mjs)
   "share-pick": { run: preyShare.pick, player: true, timeoutMs: DIALOG_MS },
-  "gear-shield": { run: gear.pickShield, player: true, timeoutMs: DIALOG_MS }
+  "gear-shield": { run: gear.pickShield, player: true, timeoutMs: DIALOG_MS },
+  "form-token-pick": { run: formToken.pick, player: true, timeoutMs: DIALOG_MS }
 };
 
 // Обработчики по сообщениям чата без правила: кровь — тег заклинания, статуэтка — карточка предмета (kind "card" конвейер не исполняет).

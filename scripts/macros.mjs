@@ -69,7 +69,7 @@ export async function runPlayerBuiltin(bid, packed) {
   if (!handler?.player) return null;
   const targets = (await Promise.all((packed.targets ?? []).map(safeUuid))).filter(Boolean);
   return handler.run({ phase: packed.phase, actor: await safeUuid(packed.actor), token: await safeUuid(packed.token), item: await safeUuid(packed.item),
-    message: game.messages.get(packed.message) ?? null, targets, target: null, degree: null, outcome: null, results: {}, region: null, dc: null, args: {} });
+    message: game.messages.get(packed.message) ?? null, targets, target: null, degree: null, outcome: null, results: {}, region: null, dc: null, args: packed.args ?? {} });
 }
 
 async function buildScope(phase, ctx, use, rule) {
