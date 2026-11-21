@@ -80,6 +80,14 @@ export function parseGroups(v) {
   });
 }
 
+const defOf = (d) => d.rule?.onUse?.challenge?.byDegree?.failure?.[0]?.affliction?.def;
+export const hasHold = (d) => { const f = defOf(d); return !!(f?.holds?.length || f?.stageLock); };
+/** Что пишет --write: ok + partial выбранных групп + долг; --only-holds оставляет только записи с holds/stageLock (долг и записи без запрета не пишутся). */
+export function filterWritten({ ok, partial, debt }, only, onlyHolds = false) {
+  const all = [...ok, ...partial.filter((d) => only.includes(d.group)), ...debt];
+  return onlyHolds ? all.filter(hasHold) : all;
+}
+
 export function buildBatch() {
   const html = readOut("html.json"), { items } = readOut("items.json"), refs = readOut("refs.json"), tri = new Map(readOut("triage.json").items.map((t) => [t.uuid, t]));
   const acc = new Map(readModelAccepted().map((d) => [d.uuid, d]));
@@ -128,13 +136,13 @@ function main() {
   for (const d of debt) { const k = d.reason.replace(/^needs-primitive: missing: affliction: /, "").replace(/^(stage text|check|coat|invalid rule|duration|text outside stages|onset|linger|stage clarification): .*/, "$1"); cat[k] = (cat[k] ?? 0) + 1; }
   for (const d of partial) groups[d.group] = (groups[d.group] ?? 0) + 1;
   const weight = (l) => l.reduce((s, d) => s + d.dupCount, 0);
-  const written = partial.filter((d) => only.includes(d.group));
+  const written = filterWritten({ ok, partial, debt }, only, process.argv.includes("--only-holds"));
   console.log(`catalog ${ok.length} (copies ${weight(ok)}); partial ${partial.length} (copies ${weight(partial)}; not in catalog without --groups); debt ${debt.length} (copies ${weight(debt)}); by reason`, cat);
   console.log("partial by group", groups);
   const strip = ({ batch, dupCount, ...d }) => d;
   if (process.argv.includes("--write")) {
     const by = {};
-    for (const d of [...ok, ...written, ...debt]) (by[d.batch] ??= []).push(strip(d));
+    for (const d of written) (by[d.batch] ??= []).push(strip(d));
     for (const [batch, list] of Object.entries(by)) {
       const p = join(ACCEPTED, `${batch}.json`);
       let ex = null; try { ex = readJson(p); } catch {}

@@ -10,6 +10,8 @@ export { AFFLICTION_KINDS, AFFLICTION_SAVES, APPLY_UNITS, MAX_STAGES };
 export const DMG_MAX = 4;     // как vAfflStage: урона до 4, состояний до 6, значение состояния 1..10
 export const COND_MAX = 6;
 export const COND_VALUE_MAX = 10;
+export const HOLD_MAX = 6;                      // как vAffliction: до 6 держимых состояний
+export const HOLD_MODES = ["keep", "present"];
 
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const intOrRaw = (v) => { const s = String(v ?? "").trim(); return /^-?\d+$/.test(s) ? Number(s) : s; };   // нечисло уйдёт в валидатор ошибкой
@@ -136,7 +138,7 @@ export const stageModsRow = (stage) => ({ text: JSON.stringify(stage?.mods ?? []
 /**
  * Правка поля. name: stage (только этот шаг); name, kind, save.statistic, save.dc, maxDuration.value|unit, onset.value|unit, virulent;
  * s.<i>.duration.value|unit, s.<i>.text, s.<i>.damage.<j>.formula|damageType, s.<i>.persistent.formula|damageType|dc,
- * s.<i>.cond.add (v — slug состояния), s.<i>.mods.<k>.<поле>. opts.valued(slug) — значимое ли состояние (новое получает значение 1).
+ * s.<i>.cond.add (v — slug состояния), s.<i>.mods.<k>.<поле>, stageLock, holds.add (slug), holds.<i>.slug|mode|from. opts.valued(slug) — значимое ли состояние (новое получает значение 1).
  */
 export function afflSet(f, row, name, v, opts = {}) {
   if (name === "stage") {
@@ -149,6 +151,18 @@ export function afflSet(f, row, name, v, opts = {}) {
     if (a === "name") def.name = String(v ?? "");
     else if (a === "kind") def.kind = v;
     else if (a === "virulent") def.virulent = !!v;
+    else if (a === "stageLock") { if (v) def.stageLock = true; else delete def.stageLock; }
+    else if (a === "holds") {   // holds.add (v — slug) | holds.<i>.slug|mode|from
+      const h = def.holds ??= [];
+      if (b === "add") { if (v && h.length < HOLD_MAX && !h.some((x) => x.slug === v)) h.push({ slug: v }); }
+      else if (h[Number(b)]) {
+        const e = h[Number(b)];
+        if (c === "slug") { if (v && !h.some((x) => x.slug === v)) e.slug = v; }
+        else if (c === "mode") { if (v === "present") e.mode = "present"; else delete e.mode; }
+        else if (c === "from") opt(e, "from", v);
+      }
+      if (!h.length) delete def.holds;
+    }
     else if (a === "note") { const s = String(v ?? "").trim(); if (s) def.note = s; else delete def.note; }
     else if (a === "traits") { const l = [...new Set(String(v ?? "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean))]; if (l.length) def.traits = l; else delete def.traits; }
     else if (a === "save") { def.save = { ...def.save }; if (b === "dc") opt(def.save, "dc", v); else def.save[b] = v; }
@@ -167,7 +181,7 @@ export function afflSet(f, row, name, v, opts = {}) {
 }
 
 /**
- * Кнопки. op: split | stageAdd | stageRm:<i> | dmgAdd:<i> | dmgRm:<i>:<j> | persOn:<i> | persOff:<i> | condRm:<i>:<j> | condStep:<i>:<j>:<±1> | modAdd:<i>:<вид> | modRm:<i>:<k>.
+ * Кнопки. op: split | holdRm:<i> | stageAdd | stageRm:<i> | dmgAdd:<i> | dmgRm:<i>:<j> | persOn:<i> | persOff:<i> | condRm:<i>:<j> | condStep:<i>:<j>:<±1> | modAdd:<i>:<вид> | modRm:<i>:<k>.
  * -> индекс стадии, которую раскрыть (после добавления/удаления стадии), иначе undefined.
  */
 export function afflOp(f, row, op) {
@@ -175,10 +189,16 @@ export function afflOp(f, row, op) {
   if (name === "split") return split(f, row);
   return mutate(f, row, (def, units) => {
     const s = def.stages[i];
+    if (name === "holdRm") { def.holds?.splice(i, 1); if (!def.holds?.length) delete def.holds; return undefined; }
     if (name === "stageAdd") { if (def.stages.length < MAX_STAGES) { def.stages.push(blankStage()); return def.stages.length - 1; } return undefined; }
     if (name === "stageRm") {
       if (def.stages.length <= 1) return undefined;
       def.stages.splice(i, 1);
+      if (def.holds) {   // from — номер стадии (с 1): удалена стадия ≤ from — from съезжает; from за пределами стадий — запись недостижима, убираем
+        for (const h of def.holds) if (h.from != null) { if (i + 1 < h.from) h.from -= 1; /* удалена сама стадия from — её место заняла следующая, from тот же */ if (h.from < 2) delete h.from; }
+        def.holds = def.holds.filter((h) => (h.from ?? 1) <= def.stages.length);
+        if (!def.holds.length) delete def.holds;
+      }
       for (let k = i; k <= def.stages.length; k++) { if (units[`s.${k + 1}`] === undefined) delete units[`s.${k}`]; else units[`s.${k}`] = units[`s.${k + 1}`]; }   // подсказки единиц съезжают вместе со стадиями
       return Math.min(i, def.stages.length - 1);
     }
@@ -226,6 +246,7 @@ export function afflView(f, row, env, open = null) {
   });
   return {
     name: def.name ?? "", kind: def.kind, statistic: def.save?.statistic, dc: def.save?.dc ?? "", maxDuration: durView(def.maxDuration, u.maxDuration), onset: durView(def.onset, u.onset), virulent: !!def.virulent, note: def.note ?? "", traits: (def.traits ?? []).join(", "),
+    holds: (def.holds ?? []).map((h, i) => ({ i, slug: h.slug, mode: h.mode ?? "keep", from: h.from ?? "" })), stageLock: !!def.stageLock,
     stage, n, shared: sharedPaths(f, row),
     stages: def.stages.map((s, i) => ({ i, line: stageLine(s, env), open: i === o, ...(i === o && { s: view(s, i) }) })),
     canAdd: n < MAX_STAGES, canRm: n > 1

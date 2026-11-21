@@ -25,11 +25,12 @@ export function effectSource({ name, description = "", rules = [], duration = UN
     system: {
       description: { value: description }, rules, level: { value: 0 }, tokenIcon: { show: true },
       duration: { sustained: false, ...duration },
-      context: {
-        origin: { actor: origin.actor ?? null, token: origin.token ?? null, item: origin.item ?? null, spellcasting: null, rollOptions: [] },
+      // pf2e: origin.actor не может быть null (недуг зоны/опасности без источника) — автор сама цель; нет и её — context целиком null
+      context: (origin.actor ?? target.actor) ? {
+        origin: { actor: origin.actor ?? target.actor, token: origin.token ?? (origin.actor ? null : target.token ?? null), item: origin.item ?? null, spellcasting: null, rollOptions: [] },
         target: target.actor ? { actor: target.actor, token: target.token ?? null } : null,   // pf2e: actor цели не может быть null, только вся цель
         roll: null
-      }
+      } : null
     }
   };
 }

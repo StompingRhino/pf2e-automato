@@ -22,7 +22,7 @@ const CAMPAIGN_PACKS = new Set(["kingmaker-features", "adventure-specific-action
 export function traceOf(it, html) {
   const h = html ?? "";
   const E = COND_OR_EFFECT.test(h) || !!it.duration || DURATION.test(h) || COVER_BYPASS.test(h);
-  const S = /@Check\[/.test(h) || !!it.defense;
+  const S = /@Check\[/.test(h) || !!it.defense || /\b(?:spell|impulse) attack roll\b/i.test(h);   // атака заклинанием со степенями без @Check (Hydraulic Push)
   const Z = /@Template\[/.test(h) || !!it.area;
   const R = it.actionType === "reaction" || /<strong>\s*Trigger/i.test(h);
   return { E, S, Z, R, any: E || S || Z || R };

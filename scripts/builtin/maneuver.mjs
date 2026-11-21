@@ -9,6 +9,7 @@ import { itemSlug, messageTargets, docOf } from "./lib.mjs";
 import { askMap } from "../checks.mjs";
 import { mechOf } from "../mech.mjs";
 import { isCounterGate } from "../hold.mjs";
+import { unchecked } from "./maneuver-gate.mjs";
 
 /** slug заклинания -> манёвры, из которых игрок выбирает один за сотворение. */
 export const SPELLS = {
@@ -68,7 +69,7 @@ async function roll(message, slug, ev) {
   try {
     let map = 0;
     if (item.traits?.has("attack")) { map = await askMap(); if (map == null) return; }   // заклинание с чертой attack считается атакой для штрафа
-    const done = await game.pf2e.actions.get(slug).use(useParams(actor, target, map));
+    const done = await unchecked(() => game.pf2e.actions.get(slug).use(useParams(actor, target, map)));   // дальность заклинания проверена выше; руки и размера у атаки заклинанием нет
     if (!done?.length) return;   // бросок не состоялся (ошибка контекста выдана pf2e)
     usedHere.add(message.id);
     if (message.isAuthor || game.user.isGM) await message.setFlag(MOD, "maneuver", slug);

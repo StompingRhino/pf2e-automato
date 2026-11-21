@@ -104,7 +104,7 @@ export async function onRollMessage(message) {
   if (!p) return null;
   const a = message.actor;
   const origin = message.flags.pf2e.origin;
-  const found = ruleFor(aliasSlugs(p.slugs, { inCombat: !!game.combats?.active?.started, hasBattleMedicine: !!a?.itemTypes?.feat?.some((f) => f.slug === "battle-medicine") }), rules.resolveRule, origin?.type === "spell" ? { origin, item: message.item } : {});   // контекст — только заклинаниям-атакам (запись bySource); Удар не выводит правило из описания оружия
+  const found = ruleFor(aliasSlugs(p.slugs, { inCombat: !!game.combats?.active?.started, hasBattleMedicine: !!a?.itemTypes?.feat?.some((f) => f.slug === "battle-medicine") }), rules.resolveRule, ["spell", "feat", "action"].includes(origin?.type) ? { origin, item: message.item } : {});   // контекст — заклинаниям, импульсам/девиантным способностям (feat) и действиям: запись bySource с roll:"system"; Удар не выводит правило из описания оружия
   if (!found || compat.shouldYield(found.rule, { slug: found.slug, sourceUuid: found.sourceUuid })) return null;
   const actor = p.actor ?? message.actor?.uuid, token = p.token ?? message.token?.uuid ?? null;
   if (!actor) return null;

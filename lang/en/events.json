@@ -98,6 +98,8 @@
           "conditions": "Stage conditions: up to six distinct ones, slug and a value from 1 to 10 ({path})",
           "mods": "Stage penalties: the same properties as a step effect (up to four) ({path})",
           "text": "Stage text is a string of up to 600 characters ({path})",
+          "holds": "Conditions held by the affliction: up to six distinct ones; slug, mode keep or present, stage from is an integer from 1; conditions that end early (prone, confused, grabbed...) cannot be held ({path})",
+          "stageLock": "stageLock (\"not below stage 1 until treated\") is yes or no only ({path})",
           "to": "An affliction is applied to the target only (to: target) ({path})"
         },
         "coat": {
@@ -313,6 +315,7 @@
       "stage": "\"{item}\": {target} is at stage {n} of {of}.",
       "onset": "Onset",
       "cleared": "\"{item}\": {target} is rid of the affliction.",
+      "stageLocked": "\"{item}\": {target} — not treated yet, the stage does not drop below 1. After treatment, remove the carrier by clicking its badge.",
       "ended": "\"{item}\": the maximum duration on {target} has run out — the affliction ends."
     },
     "apply": {

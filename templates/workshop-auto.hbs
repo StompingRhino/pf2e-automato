@@ -63,7 +63,7 @@
 {{else if lines}}
 <div class="ws-fld"><span class="ws-lbl">{{lines.label}}</span>
   {{#each lines.list}}<div class="ws-row">{{#each fields}}{{> fld}}{{/each}}<button type="button" class="ws-x" data-action="rowOp" data-path="{{rm.path}}" data-op="{{rm.op}}" name="rmLine-{{rm.path}}-{{rm.op}}" aria-label="{{localize "PF2E_AUTOMATO.workshop.au.affl.remove"}}"><i class="fa-solid fa-xmark" inert></i></button></div>{{/each}}
-  <div class="ws-adds"><button type="button" class="ws-add" data-action="rowOp" data-path="{{lines.add.path}}" data-op="{{lines.add.op}}" name="addLine-{{lines.add.path}}-{{lines.add.op}}" {{#if lines.add.off}}disabled{{/if}}><i class="fa-solid fa-plus" inert></i> {{lines.add.label}}</button></div>
+  {{#if lines.add}}<div class="ws-adds"><button type="button" class="ws-add" data-action="rowOp" data-path="{{lines.add.path}}" data-op="{{lines.add.op}}" name="addLine-{{lines.add.path}}-{{lines.add.op}}" {{#if lines.add.off}}disabled{{/if}}><i class="fa-solid fa-plus" inert></i> {{lines.add.label}}</button></div>{{/if}}
 </div>
 {{else if chips}}
 <div class="ws-fld"><span class="ws-lbl">{{chips.label}}</span>

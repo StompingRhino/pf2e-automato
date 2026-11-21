@@ -69,3 +69,10 @@ test("triage: только flat/secret-проверки без defense/against -
   assert.notEqual(t("@Check[flat|dc:11] ok", { ...base, defense: { save: "will", basic: false } }).reason, "flat-secret-check");
   assert.notEqual(triageItem(base, "<p>@Check[flat|dc:11] ok</p>", { ...ctx, accepted: new Set([base.uuid]) }).reason, "flat-secret-check");
 });
+
+test("triage: атака заклинанием без @Check и без defense — след S, не no-trace (Hydraulic Push)", () => {
+  const h = "<p>Make a ranged spell attack roll.</p><p><strong>Critical Success</strong> 6d6 damage and knocked back 10 feet.</p>";
+  const r = triageItem({ ...base, traits: ["attack"] }, h, ctx);
+  assert.notEqual(r.reason, "no-trace");
+  assert.equal(r.batch, 3);
+});

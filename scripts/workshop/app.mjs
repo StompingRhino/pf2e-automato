@@ -13,6 +13,8 @@ import { F, fieldKit } from "./fields.mjs";
 import * as af from "./affliction-edit.mjs";
 import * as im from "./item.mjs";
 import * as px from "./passive.mjs";
+import { ENDS_EARLY } from "../util.mjs";
+import { UNLINKED } from "../affliction.mjs";
 import { permanentBase } from "../builtin/neutralize-rules.mjs";
 import { BUILTIN } from "../builtin/index.mjs";
 import { hintsView, hintList } from "../hints.mjs";
@@ -166,6 +168,18 @@ function modsField(row, p, btn = (verb, arg) => ({ path: p, op: `${verb}:${arg}`
   return { mods: { list, adds, hint: t("workshop.au.mod.max", { n: au.MODS_MAX }), note, empty: !list.length && empty }, label: "" };
 }
 
+/** «Держит состояние»: строки slug/режим/стадия и выбор нового. Держать нельзя то, что кончается досрочно (как у валидатора). */
+function holdFields(v, A, btn, bare) {
+  const slugs = grantable().filter((c) => !ENDS_EARLY.has(c.slug) || UNLINKED.has(c.slug));
+  const free = slugs.filter((c) => !v.holds.some((h) => h.slug === c.slug));
+  const modes = Object.fromEntries(af.HOLD_MODES.map((m) => [m, t(`workshop.au.affl.holdMode.${m}`)]));
+  const list = v.holds.map((h) => ({ fields: [F.sel(`${A}.holds.${h.i}.slug`, t("workshop.au.affl.holdSlug"), h.slug, Object.fromEntries([[h.slug, condLabel(h.slug)], ...free.map((c) => [c.slug, c.label])]), bare),
+    F.sel(`${A}.holds.${h.i}.mode`, t("workshop.au.affl.holdModeLabel"), h.mode, modes, bare),
+    F.num(`${A}.holds.${h.i}.from`, t("workshop.au.affl.holdFrom"), h.from, { ...bare, min: 1, placeholder: "—" })], rm: btn(`holdRm:${h.i}`) }));
+  const add = v.holds.length >= af.HOLD_MAX ? null : F.sel(`${A}.holds.add`, t("workshop.au.affl.holdAdd"), "", { "": t("workshop.au.affl.holdAdd"), ...Object.fromEntries(free.map((c) => [c.slug, c.label])) }, { cls: "ws-full", tip: t("workshop.au.affl.holdTip") });
+  return [...(list.length ? [{ lines: { label: t("workshop.au.affl.holds"), list }, label: "" }] : []), ...(add ? [add] : [])];
+}
+
 /**
  * Шаг «недуг»: шапка определения, стадии (раскрыта одна), общее для шагов правила. Правка идёт через ядро (affliction-edit.mjs), пути `<строка>.affl.<имя>`.
  * ctx: {a: состояние окна, env: {t, damageLabel, conditionLabel}, plates: живые подписи для #paint}.
@@ -184,6 +198,8 @@ function afflFields(row, p, { a, env, plates }) {
     F.text(`${A}.traits`, t("workshop.au.affl.traits"), v.traits, { cls: "ws-full", tip: t("workshop.au.affl.traitsTip") }),
     F.text(`${A}.note`, t("workshop.au.affl.note"), v.note, { cls: "ws-full", tip: t("workshop.au.affl.noteTip") }),
     F.chk(`${A}.virulent`, t("workshop.au.affl.virulent"), v.virulent, { tip: t("workshop.au.affl.virulentTip") }),
+    F.chk(`${A}.stageLock`, t("workshop.au.affl.stageLock"), v.stageLock, { tip: t("workshop.au.affl.stageLockTip") }),
+    ...holdFields(v, A, btn, bare),
     F.sel(`${A}.stage`, t("workshop.au.affl.stage"), v.stage, Object.fromEntries(Array.from({ length: v.n }, (_, i) => [i + 1, String(i + 1)])), { tip: t("workshop.au.affl.stageTip") })
   ];
   const stages = v.stages.map((st) => {

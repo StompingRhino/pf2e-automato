@@ -43,9 +43,9 @@
       "aliases": ["^affliction stages", "affliction: (spell with degree table|note)"]
     },
     "hold": {
-      "title": "Состояние нельзя снять/уменьшить ниже значения (недуг: пока не излечён; считается по заметке partial-правила)",
-      "primitive": null,
-      "rule": "(can.t|cannot) be (reduced|removed|healed|cured)"
+      "title": "Состояние нельзя снять/уменьшить ниже значения (недуг: пока не излечён; def.holds / def.stageLock; считается по заметке partial-правила)",
+      "primitive": "def.holds/def.stageLock (plan-affliction-linger-hold.md)",
+      "rule": "(can.t|cannot) be (reduced|removed)"
     },
     "check-auto-unless": {
       "title": "Проверка только при условии цели (схвачена), иначе автоматический успех",
@@ -68,10 +68,10 @@
       "aliases": ["random-table", "random (effect|table|spell)"]
     },
     "healing-modifier": {
-      "title": "Модификатор лечения («восстанавливает вдвое меньше»)",
+      "title": "Модификатор лечения («восстанавливает вдвое меньше», запрет лечения урона недуга: Mummy Rot и т. п.)",
       "primitive": null,
-      "aliases": ["healing modifier"],
-      "rule": "regains? half as many Hit Points|no benefit from (healing|regeneration)"
+      "aliases": ["healing modifier", "can.t be healed", "damage (from it )?(can.t|cannot) be healed"],
+      "rule": "regains? half as many Hit Points|no benefit from (healing|regeneration)|(can.t|cannot) be healed|damage from it (be )?healed"
     },
     "hp-transfer": {
       "title": "Перенос очков здоровья между существами (каждый ход)",
@@ -84,8 +84,8 @@
       "aliases": ["spellheart strike"]
     },
     "impulse-attack": {
-      "title": "Атака импульсом/deviant-способностью: check.statistic не знает impulse и deviant",
-      "primitive": null,
+      "title": "Атака импульсом/deviant-способностью с условием/эффектом (check.statistic impulse или deviant)",
+      "primitive": "check.statistic impulse или deviant (getStatistic; SpecialStatistic черт Impulses / Deviant Classification)",
       "aliases": ["impulse attack|deviant", "deviant (attack|statistic)", "attack statistic"]
     },
     "spell-attack-save": {
@@ -161,7 +161,7 @@
     "triggered-save": {
       "title": "Спасбросок от ауры / входа в область / начала или конца хода",
       "primitive": "onEvent side:near / zone.triggers (plan-triggered-save.md)",
-      "aliases": ["aura", "\\benter(s|ing)?\\b", "\\bentry\\b", "stepping through", "move into", "on movement", "turn[ -](start|end)", "(start|end)[- ]of[- ](its )?turn", "start of its turn", "end turn", "\\bin (the )?(area|radius|river)", "webbing", "zone with turn", "emanation zone", "icy surface"]
+      "aliases": ["aura", "triggered save", "\\benter(s|ing)?\\b", "\\bentry\\b", "stepping through", "move into", "on movement", "turn[ -](start|end)", "(start|end)[- ]of[- ](its )?turn", "start of its turn", "end turn", "\\bin (the )?(area|radius|river)", "webbing", "zone with turn", "emanation zone", "icy surface"]
     },
     "reaction-trigger": {
       "title": "Реакция/активация по триггеру: условие события и ответ",
@@ -169,10 +169,10 @@
       "aliases": ["reaction (trigger|activation)s?", "triggered activations", "trigger activation", "on reaction"]
     },
     "event-trigger": {
-      "title": "Срабатывание по прочему событию: смерть цели, взгляд, сотворение, прыжок, предмет и т.п.",
+      "title": "Срабатывание по событию, которое onEvent не выражает: спасбросок толпы вокруг события, триггер на цели, сотворение рядом без контрзаклинания, использование предмета, взгляд/касание, объект (plan-event-trigger.md, итог прохода mdebt4)",
       "primitive": null,
       "owner": "b04-reactions",
-      "aliases": ["\\btriggers?\\b", "triggered", "on (sight|cast|jump)"]
+      "aliases": ["(?<!reaction )\\btriggers?\\b", "triggered (?!save)", "on (sight|cast|jump)"]
     },
     "repeat-save": {
       "title": "Повторный спасбросок на границе хода цели",

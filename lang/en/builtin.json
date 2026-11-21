@@ -117,6 +117,15 @@
       "reachName": "melee reach",
       "inertAction": "This action only describes the ability — attack and roll damage with its strike buttons below.",
       "reach": { "out": "{name} is out of reach: {d} ft, reach {r} ft. Alt-click to strike anyway." },
+      "maneuverGate": {
+        "name": "maneuver requirements",
+        "noHand": "{name}: you need a free hand. Free a hand. Alt-click to bypass.",
+        "noHandTrait": "{name}: you need a free hand. Free a hand or wield a weapon with the {trait} trait. Alt-click to bypass.",
+        "size": "{name}: \"{target}\" is more than one size larger than you. Pick a smaller target. Alt-click to bypass.",
+        "reach": "{name}: \"{target}\" is out of reach ({d} ft, your reach {r} ft). Move closer. Alt-click to bypass.",
+        "range30": "{name}: \"{target}\" is farther than {r} ft ({d} ft). Move closer. Alt-click to bypass."
+      },
+      "hold": { "blocked": "\"{cond}\" can't be {how} while the affliction \"{affliction}\" lasts. Cure the affliction first. Alt-click is the GM's override.", "how": { "remove": "removed", "reduce": "reduced" } },
       "ward": {
         "hint": "<p><b>{guard}</b>: cover {ally} with your shield? Shield Block, Hardness {hardness}.</p>",
         "button": "Cover with shield",

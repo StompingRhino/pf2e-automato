@@ -1,7 +1,8 @@
 // Исполнение недугов (plan-affliction.md §4): только активный ГМ. Носитель — эффект цели (meta.affliction + счётчик system.badge.value = стадия).
 // Стадию применяет applyStage: из шагов (affliction/stageDelta) вызывается напрямую с флагом direct у update, из хука updateItem — только правка бейджа ГМом (клик = лечение).
 // Часы: одно поле nextAt в мировом времени. В бою — на конце хода цели (pf2e.endTurn), вне боя и у не-участников — updateWorldTime / смена лидера.
-import { MOD, L, queue, flagPath, guardActiveGM } from "./util.mjs";
+import { MOD, L, queue, flagPath, forcedReplace, guardActiveGM } from "./util.mjs";
+import { unchecked, readHeld } from "./condition-hold.mjs";
 import { modeOf } from "./settings.mjs";
 import { applyCondition, applyPersistent, dealDamage, removeByKey, findByKey, immuneToTraits } from "./apply.mjs";
 import { card } from "./card.mjs";
@@ -35,6 +36,47 @@ function say(def, actor, text, extra = "", whisper = null) {
   return ChatMessage.create({ ...(whisper && { whisper }), content: card(`${text}${extra ? `<br>${extra}` : ""}`, "", { title: esc(def.name), icon: "fa-biohazard" }), speaker: { alias: def.name } });
 }
 
+/** Имя недуга в строках: исходный предмет, иначе носитель (def.name — английский снимок). */
+const nameOf = (item, m) => { try { return (m.origin && globalThis.fromUuidSync?.(m.origin)?.name) || item.name; } catch { return item.name; } };
+
+/** Собственный голый документ состояния носителя (создан им, ключ `affl:<slug>:`); чужие копии того же slug (зона, другой источник) — не его. */
+const ownDoc = (actor, m, slug) => actor.itemTypes.condition.find((x) => x.slug === slug && !x.isLocked && !x.grantedBy && x.flags?.[MOD]?.meta?.key?.startsWith(`affl:${m.slug}:`));
+
+/**
+ * Что недуг держит на стадии n (def.holds): { slug: { floor, id } }. Нет состояния на стадии или n ниже from — записи нет.
+ * Голое (UNLINKED) состояние — документ, созданный этим носителем (meta.key `affl:<slug>:`); нет его (создан зоной/другим источником, applyCondition пропустил) — id null:
+ * держим любой собственный документ slug, чужую копию в held не пишем. При спуске стадии (old > n) документ носителя опускается на разницу значений стадий
+ * (не ниже значения стадии и floor других носителей); понижение уходит в note (журнал made), откат вернёт. Обёрнутое — id условия, выданного обёрткой стадии.
+ */
+async function heldOf(item, m, st, n, old, note) {
+  const actor = item.actor, out = {};
+  for (const h of m.def.holds ?? []) {
+    const c = st.conditions.find((x) => x.slug === h.slug);
+    if (!c || n < (h.from ?? 1)) continue;
+    const want = c.value ?? 1;
+    let doc;
+    if (UNLINKED.has(h.slug)) {
+      doc = ownDoc(actor, m, h.slug);
+      const cur = doc?._source?.system?.value?.value ?? doc?.system?.value?.value;
+      const oc = old != null && old > n ? m.def.stages?.[old - 1]?.conditions?.find((x) => x.slug === h.slug) : null;
+      if (doc && oc && Number.isFinite(cur)) {
+        const other = Math.max(0, ...readHeld(actor).valid.filter((x) => x.slug === h.slug && x.carrier.id !== item.id).map((x) => x.floor));
+        const to = Math.max(cur - ((oc.value ?? 1) - want), want, other);
+        if (to < cur) {
+          await unchecked(() => queue(`actor:${actor.uuid}`, () => game.pf2e.ConditionManager.updateConditionValue(doc.id, actor, to)), actor);
+          note({ op: "raised", item: doc, prev: cur });
+        }
+      }
+    } else {
+      const w = findByKey(actor, stageKey(m.slug, n, h.slug, true));
+      doc = w && actor.itemTypes.condition.find((x) => x.slug === h.slug && x.grantedBy?.id === w.id);
+    }
+    if (!doc) continue;
+    out[h.slug] = { floor: h.mode === "present" ? 1 : want, id: doc.id };
+  }
+  return out;
+}
+
 /**
  * Эффекты стадии n носителя: состояния, штрафы (system.rules носителя), урон, карточка. Идемпотентно по ключам документов.
  * damage:false — откат (урон не повторяем); from — стадия, чьи связанные состояния заменить (при откате прежняя применённая уже затёрта).
@@ -48,15 +90,28 @@ export async function applyStage(item, n, { damage = true, from = null, quiet = 
   const note = (r) => { if (r?.item && (r.op === "created" || r.op === "raised")) res.made.push({ item: r.item.uuid, ...(r.op === "raised" && { prev: r.prev }) }); };
   try {
     const old = from ?? m.applied, ctx = { target: actor.getActiveTokens?.(true, true)?.[0] }, meta = (key) => ({ key, source: "affliction" });
-    if (old != null && old !== n) await removeByKey(actor, linkedPrefix(m.slug, old));
+    if (old != null && old !== n) await unchecked(() => removeByKey(actor, linkedPrefix(m.slug, old)), actor);
     for (const c of st.conditions) {
       const spec = { slug: c.slug, ...(c.value != null && { value: c.value }), policy: "max" };
       // связанные состояния живут в обёртке (сменятся со стадией), перечисленные pf2e (zl) — поднимаются по max и остаются
-      if (UNLINKED.has(c.slug)) note(await applyCondition(actor, spec, meta(stageKey(m.slug, n, c.slug)), ctx));
+      if (UNLINKED.has(c.slug)) {
+        // собственный документ живёт все стадии: растёт по max, спуск — в heldOf; нет его — applyCondition создаёт свой (source affliction — никогда не чужой)
+        const own = ownDoc(actor, m, c.slug), cur = own?._source?.system?.value?.value ?? own?.system?.value?.value;
+        if (!own) note(await applyCondition(actor, spec, meta(stageKey(m.slug, n, c.slug)), ctx));
+        else if (Number.isFinite(cur) && (c.value ?? 1) > cur) {
+          await queue(`actor:${actor.uuid}`, () => game.pf2e.ConditionManager.updateConditionValue(own.id, actor, c.value ?? 1));
+          note({ op: "raised", item: own, prev: cur });
+        }
+      }
       else await applyCondition(actor, { ...spec, duration: FOREVER }, meta(stageKey(m.slug, n, c.slug, true)), ctx);
     }
     if (st.persistent) note(await applyPersistent(actor, st.persistent, meta(stageKey(m.slug, n, "P")), {}));
-    await queue(`actor:${actor.uuid}`, () => item.update({ "system.rules": rulesOfMods(st.mods ?? []), [flagPath("meta", "affliction", "applied")]: n }, DIRECT));
+    // held — заменой: слияние оставило бы slug, которого на этой стадии уже нет
+    const held = { ...(m.held ?? {}) };
+    for (const h of m.def.holds ?? []) delete held[h.slug];
+    Object.assign(held, await heldOf(item, m, st, n, old, note));
+    const heldUp = JSON.stringify(held) === JSON.stringify(m.held ?? {}) ? {} : forcedReplace(flagPath("meta", "affliction", "held"), held);
+    await queue(`actor:${actor.uuid}`, () => item.update({ "system.rules": rulesOfMods(st.mods ?? []), [flagPath("meta", "affliction", "applied")]: n, ...heldUp }, DIRECT));
     if (damage) for (const d of st.damage) { await dealDamage(actor, d, {}, null); res.dealt = true; }
     if (!quiet) {
       const nt = old == null && m.def.note ? esc(m.def.note) : "", priv = noteGM();   // заметка — на первой карточке стадии
@@ -81,7 +136,7 @@ export async function afflictionUnmake(made = []) {
   for (const x of [...made].reverse()) {
     const doc = await safeDoc(x.item);
     if (!doc?.actor) continue;
-    await queue(`actor:${doc.actor.uuid}`, () => (x.prev == null ? doc.delete({ [MOD]: { undo: true } }) : game.pf2e.ConditionManager.updateConditionValue(doc.id, doc.actor, x.prev)));
+    await unchecked(() => queue(`actor:${doc.actor.uuid}`, () => (x.prev == null ? doc.delete({ [MOD]: { undo: true } }) : game.pf2e.ConditionManager.updateConditionValue(doc.id, doc.actor, x.prev))), doc.actor);
   }
 }
 
@@ -146,16 +201,17 @@ async function applyDelta(actor, spec, c) {
   const r = await queue(`actor:${actor.uuid}`, async () => {
     const item = findByKey(actor, carrierKey(spec.slug)), m = metaOf(item);
     if (!m || m.keys.includes(meta.key) || degree == null) return { op: "skipped" };
-    const cur = item.system.badge.value, { delta, streak } = stageDelta(degree, m.def.virulent, m.streak), nx = advance(cur, delta, m.def);
+    const cur = item.system.badge.value, { delta, streak } = stageDelta(degree, m.def.virulent, m.streak), nx = advance(cur, delta, m.def, m.locked);
     if (nx.cleared) return { op: "afflCleared", item, data: (({ _id, ...d }) => d)(item.toObject()) };
     const iv = intervalOf(m.def, nx.stage);
     const prev = { stage: cur, aff: foundry.utils.deepClone(m) };
     await item.update({ "system.badge.value": nx.stage, [flagPath("meta", "affliction")]: { streak, pending: null, keys: [...m.keys, meta.key], nextAt: iv == null ? null : now() + iv } }, DIRECT);
-    return { op: "afflicted", item, prev, apply: nx.stage !== cur || nx.repeated };
+    return { op: "afflicted", item, prev, apply: nx.stage !== cur || nx.repeated, locked: nx.locked };
   });
+  if (r.locked) await say(metaOf(r.item).def, actor, L("affliction.stageLocked", { item: esc(nameOf(r.item, metaOf(r.item))), target: esc(actor.name) }));
   if (r.op === "afflCleared") {
     const { item, ...rest } = r, def = metaOf(item).def;
-    await item.delete();
+    await unchecked(() => item.delete(), actor);
     await say(def, actor, L("affliction.cleared", { item: esc(def.name), target: esc(actor.name) }));
     return rest;
   }
@@ -163,11 +219,14 @@ async function applyDelta(actor, spec, c) {
   return { op: r.op, item: r.item, prev: r.prev, made };
 }
 
-/** Откат ops: стадия, streak, часы возвращаются; состояния прежней стадии — без повторного урона. */
+/** Откат ops: стадия, streak, часы возвращаются; состояния прежней стадии — без повторного урона. held из снимка — заменой, не слиянием. */
 export async function afflictionUndo(item, prev, made = []) {
-  const from = metaOf(item)?.applied ?? null;
+  const from = metaOf(item)?.applied ?? null, { held, ...aff } = prev.aff, opts = { [MOD]: { direct: true, undo: true } };
   await afflictionUnmake(made);
-  await queue(`actor:${item.actor.uuid}`, () => item.update({ "system.badge.value": prev.stage, [flagPath("meta", "affliction")]: prev.aff }, { [MOD]: { direct: true, undo: true } }));
+  await queue(`actor:${item.actor.uuid}`, async () => {
+    await item.update({ "system.badge.value": prev.stage, [flagPath("meta", "affliction")]: aff }, opts);
+    await item.update(forcedReplace(flagPath("meta", "affliction", "held"), held ?? {}), opts);
+  });
   await applyStage(item, prev.stage, { damage: false, from, quiet: true });
 }
 
@@ -216,7 +275,7 @@ async function tickItem(item, evId) {
   let m = metaOf(item), due = dueOf(m, now());
   if (due === "end") {
     await say(m.def, item.actor, L("affliction.ended", { item: esc(m.def.name), target: esc(item.actor.name) }));
-    await item.delete();
+    await unchecked(() => item.delete(), item.actor);
     return;
   }
   if (due === "onset") {
@@ -265,7 +324,11 @@ export function init() {
   Hooks.on("createItem", (item) => { if (isCarrier(item)) track(item.parent); });
   // носитель снят (в т.ч. откатом): созданное его стадиями уходит следом
   Hooks.on("deleteItem", (item) => {
-    const m = metaOf(item);
-    if (m && item.parent && guardActiveGM()) removeByKey(item.parent, `affl:${m.slug}:`).catch((e) => console.error(`${MOD} | affliction delete`, e));
+    const m = metaOf(item), actor = item.parent;
+    if (!m || !actor || !guardActiveGM()) return;
+    unchecked(async () => {
+      // каждый носитель держит свой документ состояния: уходит только его (чужой носитель того же slug и копия зоны остаются)
+      await removeByKey(actor, `affl:${m.slug}:`);
+    }, actor).catch((e) => console.error(`${MOD} | affliction delete`, e));
   });
 }

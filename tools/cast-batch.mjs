@@ -5,7 +5,7 @@ import { writeFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { readOut, readJson, writeText, serializeDrafts, stripHtml, ACCEPTED, arg, cmp, isMain } from "./lib.mjs";
 import { deriveCast, activateOf, frequencyOf, castProse, validateRule, RULE_VERSION } from "../scripts/rules.mjs";
-import { roundTrip, semanticErrors, mergeAccepted } from "./validate.mjs";
+import { roundTrip, semanticErrors, itemNumbers, mergeAccepted } from "./validate.mjs";
 import { readModelAccepted } from "./drafts.mjs";
 import { pick } from "./sample.mjs";
 
@@ -86,14 +86,11 @@ export function checkCast(rule, html, refs, spellDefs = {}, { partial = false } 
   if (!v.ok) return [`validateRule: ${v.errors.map(String).join("; ").slice(0, 100)}`];
   if (!roundTrip(v.rule)) return ["roundTrip"];
   const bad = semanticErrors(rule, refs, html).map((e) => `semantic: ${String(e).slice(0, 80)}`);
-  const all = castProse(html), own = (s) => /\b(?:you|those)\b[^.]*\bmust\b/i.test(s);   // «You … must succeed at a …» — испытание самого владельца, не СЛ заклинания
-  const sents = (t) => t.split(/(?<=[.!?])\s+/).filter((s) => !own(s));
-  const nums = (re, t) => new Set(sents(t).flatMap((s) => [...s.matchAll(re)].map((m) => +(m[1] ?? m[2]))));
+  const { all, nums, spellDc: itemSpellDc, attacks, counteracts: cs } = itemNumbers(html), own = (s) => /\b(?:you|those)\b[^.]*\bmust\b/i.test(s);
   const all_ = activations(html), els = activateOf(rule) ?? [], acts = partial ? castActs(all_) : all_;   // partial: остальные активации — ручные, правило их не касается
   if (acts.length !== els.length) return [...bad, `activations ${partial ? acts.length : all_.length} != cast ${els.length}`];
   // «ручной» — только текст без заклинания; активация с другим заклинанием — вторая кастовая или долг
   if (partial) all_.filter((a) => !acts.includes(a) && a.links.length).forEach((a) => bad.push(`activation ${all_.indexOf(a) + 1}: another activation names ${a.links.length} spell(s), cast not derived`));
-  const itemSpellDc = nums(/\bspell DC\b[^.]{0,80}?(\d+)|\bDC of (?:any|all|each) spells?[^.]{0,80}?(\d+)/gi, all), attacks = nums(/\bspell attack\b[^.]{0,80}?\+(\d+)/gi, all);
   const held = /\bmust be held\b/i.test(all) ? "held" : undefined;
   acts.forEach((a, i) => {
     const c = els[i], n = `activation ${i + 1}`, text = castProse(a.eff);
@@ -119,7 +116,6 @@ export function checkCast(rule, html, refs, spellDefs = {}, { partial = false } 
     const dcs = new Set([...nums(/\bdc:(\d+)/g, a.eff), ...nums(/\bDC (?:of )?(\d+)/gi, text), ...itemSpellDc]);
     if (c.dc == null ? dcs.size : !dcs.has(c.dc) || dcs.size > 1) bad.push(`${n}: dc ${c.dc} != text ${[...dcs]}`);
     if (c.attack == null ? attacks.size : !attacks.has(c.attack) || attacks.size > 1) bad.push(`${n}: attack ${c.attack} != text ${[...attacks]}`);
-    const cs = nums(/\bcounteract (?:check|modifier)\b[^.]{0,30}?\+(\d+)/gi, all);
     if (c.counteract == null ? cs.size : !cs.has(c.counteract)) bad.push(`${n}: counteract ${c.counteract} != text ${[...cs]}`);
     const f = frequencyOf(/<strong>\s*Frequency\s*<\/strong>([^<]*)/i.exec(a.block)?.[1]) ?? frequencyOf(castProse(a.block));
     const ft = /<strong>\s*Frequency\s*<\/strong>([^<]*)/i.exec(a.block)?.[1]?.trim();   // текст частоты есть, а разобрать не вышло («once per month») — лимит потерян

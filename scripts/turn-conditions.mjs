@@ -6,15 +6,18 @@ import { MOD, L, queue, callGM, isActiveGM, degreeFromTotal } from "./util.mjs";
 import { modeOf } from "./settings.mjs";
 import { esc, whisperDC, cardButton } from "./builtin/lib.mjs";
 import { settledDegree } from "./hold.mjs";
+import { floorOf } from "./condition-hold.mjs";
 
 const WB = "xdy-pf2e-workbench", WB_KEY = "decreaseFrightenedConditionEachTurn", PA = "pf2e-automations";
 
 /* ---------- Чистая часть (node-тесты) ---------- */
 
-/** instances: [{id, value, locked}] — все экземпляры испуга; yielded — другой модуль (workbench/pf2e-automations) уже уменьшает. Запертые (grantee: restrict) не трогаем. -> [{id, to}] (to 0 = снять). */
+/** instances: [{id, value, locked, floor?}] — все экземпляры испуга; yielded — другой модуль (workbench/pf2e-automations) уже уменьшает. Запертые (grantee: restrict) не трогаем.
+ * floor — удержание недугом (condition-hold): ниже него не опускаем. -> [{id, to}] (to 0 = снять). */
 export function frightenedPlan(instances, yielded = false) {
   if (yielded) return [];
-  return instances.filter((i) => i.value > 0 && !i.locked).map((i) => ({ id: i.id, to: i.value - 1 }));
+  return instances.filter((i) => i.value > 0 && !i.locked && Math.max(i.value - 1, i.floor ?? 0) < i.value)
+    .map((i) => ({ id: i.id, to: Math.max(i.value - 1, i.floor ?? 0) }));
 }
 
 /** Степень Стойкости (0..3) -> на сколько падает тошнота: успех 1, крит. успех 2; провал и крит. провал — без изменений (pf2e Retch). */
@@ -23,11 +26,14 @@ export const retchDelta = (degree) => (degree === 3 ? 2 : degree === 2 ? 1 : 0);
 /** Новое значение тошноты (0 = снять). */
 export const retchValue = (value, degree) => Math.max(0, value - retchDelta(degree));
 
-/** Экземпляры тошноты [{id, value, locked}] -> [{id, to}]: все незапертые со значением выше нового (видимое значение реально падает). */
+/** Экземпляры тошноты [{id, value, locked, floor?}] -> [{id, to}]: все незапертые со значением выше нового (видимое значение реально падает); не ниже floor (удержание недугом). */
 export function retchPlan(instances, degree) {
   const top = Math.max(0, ...instances.filter((i) => !i.locked).map((i) => i.value ?? 0)), to = retchValue(top, degree);
-  return instances.filter((i) => !i.locked && i.value > to).map((i) => ({ id: i.id, to }));
+  return instances.filter((i) => !i.locked && i.value > Math.max(to, i.floor ?? 0)).map((i) => ({ id: i.id, to: Math.max(to, i.floor ?? 0) }));
 }
+
+/** Есть ли смысл предлагать «Избавиться»: хоть один экземпляр выше своего floor. При keep floor = текущее значение — шёпот не выкладывается. */
+export const retchPossible = (instances) => instances.some((i) => (i.value ?? 1) > (i.floor ?? 0));
 
 /** СЛ источника тошноты: items — состояние и его обёртка (flags[MOD].meta.message -> снимок use.dc). getMsg(id) -> сообщение | null. */
 export function sourceDC(items, getMsg) {
@@ -51,7 +57,8 @@ async function onEndTurn(combatant) {
   const actor = combatant?.actor;
   if (!isActiveGM() || !actor || modeOf("frightened") === "off") return;
   await queue(`actor:${actor.uuid}`, async () => {
-    const inst = actor.itemTypes.condition.filter((c) => c.slug === "frightened").map((c) => ({ id: c.id, value: c.value ?? 0, locked: !!c.isLocked }));
+    const floor = floorOf(actor, "frightened") ?? 0;
+    const inst = actor.itemTypes.condition.filter((c) => c.slug === "frightened").map((c) => ({ id: c.id, value: c.value ?? 0, locked: !!c.isLocked, floor }));
     for (const { id, to } of frightenedPlan(inst, decreaserOn())) {
       try { await game.pf2e.ConditionManager.updateConditionValue(id, actor, to); }
       catch (e) { console.error(`${MOD} | frightened`, e); }
@@ -64,6 +71,8 @@ async function onStartTurn(combatant) {
   if (!isActiveGM() || !actor || modeOf("sickened") === "off") return;
   const c = actor.getCondition?.("sickened");
   if (!c) return;
+  const floor = floorOf(actor, "sickened") ?? 0;
+  if (!retchPossible(actor.itemTypes.condition.filter((x) => x.slug === "sickened").map((x) => ({ value: x.value ?? 1, floor })))) return;   // удержана недугом: «Избавиться» не поможет
   const dc = sourceDC([c, actor.items.get(c.flags?.pf2e?.grantedBy?.id)], (id) => game.messages.get(id));
   const field = dc == null ? `<input type="number" class="paf-dc-input" data-af-retch-dc placeholder="${L("turn.dc")}">` : "";
   await whisperDC(actor, "turn.sickened", { name: esc(actor.name), value: c.value }, dc,
@@ -74,7 +83,8 @@ async function onStartTurn(combatant) {
 export function applyRetch(actorUuid, degree) {
   return queue(`actor:${actorUuid}`, async () => {
     const actor = await fromUuid(actorUuid);
-    const inst = actor?.itemTypes.condition.filter((c) => c.slug === "sickened").map((c) => ({ id: c.id, value: c.value ?? 1, locked: !!c.isLocked })) ?? [];
+    const floor = actor ? floorOf(actor, "sickened") ?? 0 : 0;
+    const inst = actor?.itemTypes.condition.filter((c) => c.slug === "sickened").map((c) => ({ id: c.id, value: c.value ?? 1, locked: !!c.isLocked, floor })) ?? [];
     if (!inst.length) return { ok: true, skipped: true };
     for (const { id, to } of retchPlan(inst, degree)) await game.pf2e.ConditionManager.updateConditionValue(id, actor, to);
     return { ok: true };

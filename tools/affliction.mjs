@@ -5,6 +5,8 @@ import { readOut, stripHtml, isMain } from "./lib.mjs";
 import { VALUED, NOTE_MAX, afflictionStages, parseCheck, validateRule, DAMAGE_TYPES, AFFLICTION_KINDS } from "../scripts/rules.mjs";
 import { STEP_TARGETS, BONUS_TYPES } from "../scripts/workshop/effect.mjs";
 import { normalizeMods } from "../scripts/inline-effect.mjs";
+import { ENDS_EARLY } from "../scripts/util.mjs";
+import { UNLINKED } from "../scripts/affliction.mjs";
 
 const UNIT = { r: "rounds", m: "minutes", h: "hours", d: "days" };
 // неделя = 7 дней (схема знает до дней); месяцы/годы схемой не выражаются — ANY_DUR без DUR_END = нераспознанный срок -> долг
@@ -253,6 +255,46 @@ const plainMarkup = (s) => s
   .replace(/@Check\[([^\]]*)\]/g, (_m, i) => { const [st, ...p] = i.split("|"), dc = p.find((x) => x.startsWith("dc:"))?.slice(3); return dc ? `DC ${dc} ${st}` : st; })
   .replace(/@UUID\[[^\]]*\]/g, "").replace(/\[\[\/(?:gmr|r) [^\]]*\]\]\{([^}]*)\}/g, "$1").replace(/\s+/g, " ").trim();
 
+// hold: «состояние нельзя снять/снизить, пока недуг идёт». Ловим фразу запрета + срок («until/while/as long as»); «except by magic» — условный запрет, не берём.
+const HOLD_NEG = /\b(?:can'?t|cannot|can\s+not|don'?t|doesn'?t|do\s+not|does\s+not)\s+(?:\w+\s+)?(?:(?:be\s+)?(?:end(?:ed)?|removed|reduced|lowered|recovered)|improve|recover|reduce|remove|go\s+below)\b/i;
+const HOLD_SCOPE = /\b(?:until|while|as\s+long\s+as)\b/i;
+const HOLD_BELOW1 = /\bbelow\s+(?:1|one)\b/i;
+const HOLD_REMOVE = /\bremov/i;   // «can't be removed» — нельзя снять (present: снижать до 1 можно); keep — «can't be reduced / recover / end»
+const HOLD_WHOLE = /\b(?:poison|disease|curse|affliction)'?s?\s+duration\b|\bwhile\s+(?:you(?:'re|\s+are)\s+)?(?:affected|afflicted)\b|\buntil\s+(?:successfully\s+)?(?:cured|treated)\b|\bas\s+long\s+as\b/i;   // срок всего недуга
+const HOLD_CONDS = BARE.filter((x) => x !== "off-guard");
+const HOLDABLE = (slug) => !(ENDS_EARLY.has(slug) && !UNLINKED.has(slug));
+/** Запрет нижней границы стадии: «can't be reduced below stage 1 … until successfully treated/cured» (Blackfrost, Bog Rot, Cold Rot, Sand Rot). */
+export const STAGE_LOCK = /\bcan'?t\s+be\s+reduced\s+below\s+stage\s+1\b[^.;]*\buntil\b[^.;]*\b(?:treated|cured)\b/i;
+/**
+ * Тексты (вне стадий и по стадиям) -> [{slug, mode?, from?}]. texts: outsides (общие), stagePlains: plain-текст каждой стадии, stages: разобранные стадии.
+ * Берём только состояния, которые стадии действительно накладывают (с номера from) и которые hold может держать (UNLINKED ∪ обёрнутые).
+ */
+export function parseHolds(outsides, stagePlains, stages) {
+  const found = new Map();
+  const scan = (text, from) => {
+    const parts = text.split(/(?<=[.!?;])\s+/);
+    for (const [k, s] of parts.entries()) {
+      const neg = HOLD_NEG.exec(s), scope = HOLD_SCOPE.exec(s);
+      if (!neg || !scope || /\bexcept\b/i.test(s) || /\bimprove\s+on\s+(?:its|their|his|her)\s+own\b/i.test(s) ||   // нет естественного снижения ≠ нельзя снять
+ (/\bdamage\b[^.;]*\bcan'?t\b/i.test(s) && !/\b(?:condition|value)\b/i.test(s))) continue;   // «damage that can't be recovered» (Najra) — урон, не состояние
+      const subj = s.slice(0, scope.index);
+      const slugs = HOLD_CONDS.filter((c) => new RegExp(`\\b${c}\\b`, "i").test(subj));
+      // фраза после «;» со сроком всего недуга (Azarpal) относится ко всему недугу, не к стадии, у которой стоит
+      const fr = from > 1 && parts[k - 1]?.endsWith(";") && HOLD_WHOLE.test(s) ? null : from;
+      for (const slug of slugs) {
+        const at = stages.findIndex((st, i) => i + 1 >= (fr ?? 1) && st.conditions.some((c) => c.slug === slug));
+        if (at < 0 || !HOLDABLE(slug)) continue;
+        const e = { slug, ...((HOLD_BELOW1.test(s) || HOLD_REMOVE.test(neg[0])) && { mode: "present" }), ...(fr > 1 && { from: fr }) };
+        const old = found.get(slug);
+        if (!old || (e.from ?? 1) < (old.from ?? 1)) found.set(slug, e);
+      }
+    }
+  };
+  outsides.forEach((t) => scan(plainMarkup(t)));
+  stagePlains.forEach((t, i) => scan(t, i + 1));
+  return [...found.values()].slice(0, 6);
+}
+
 /**
  * html документа -> { def, unsure: [строки], dcMissing } | null (нет блоков Stage, нет спасброска или вида недуга).
  * opts: { name, traits: [трейты предмета], ignoreOutside? (лор вне стадий — не механика), extraNote? (добавка к заметке: то, чего нет в тексте), refineOk? ({ word } из REFINE_OK),kind?, save?: { statistic, dc? } (защита из defense.save у заклинания), condSlug(uuid) -> slug | null }
@@ -354,11 +396,12 @@ export function parseAffliction(html, { name, traits = [], kind = null, save = n
   const { note, cutMech } = noteOf(outsides, extraNote);
   if (cutMech) debt.push("note: mechanics exceed the limit");
   const group = groupOf(mine, dead);
+  const allOut = outsideTexts(html), holds = parseHolds(allOut, infos.map((x) => x.plain), stages), stageLock = allOut.some((t) => STAGE_LOCK.test(plainMarkup(t)));
   // virulent — только из трейтов (предмета, @Check) или скобок заголовка; слово в описании («addiction is virulent») признаком не служит, но правило под сомнением
   const virulent = traitList.includes("virulent") || /\([^)]*\bvirulent\b[^)]*\)/i.test(plainHead);
   if (!virulent && /\bvirulent\b/i.test(stripHtml(html).split(/(?<=[.!?])\s+/).filter((x) => !/\baddiction\b/i.test(x)).join(" "))) debt.push("virulent in text, not in traits");
   return {
-    def: { name: name ?? "", kind: k, save: sv, maxDuration: du && !dead ? dur(du[1], du[2]) : null, onset: on ? dur(on[1], on[2]) : null, virulent, ...(traitList.length && { traits: [...new Set(traitList.filter((x) => /^[a-z0-9-]+$/.test(x) && !AFFLICTION_KINDS.includes(x) && x !== "virulent"))] }), ...(note && { note }), stages },
+    def: { name: name ?? "", kind: k, save: sv, maxDuration: du && !dead ? dur(du[1], du[2]) : null, onset: on ? dur(on[1], on[2]) : null, virulent, ...(traitList.length && { traits: [...new Set(traitList.filter((x) => /^[a-z0-9-]+$/.test(x) && !AFFLICTION_KINDS.includes(x) && x !== "virulent"))] }), ...(note && { note }), ...(holds.length && { holds }), ...(stageLock && { stageLock: true }), stages },
     unsure, debt, group
   };
 }

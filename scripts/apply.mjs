@@ -16,6 +16,7 @@ import { rulesOfMods, textOfMods, inlineSlug } from "./inline-effect.mjs";
 import { afflictionStep, afflictionUndo, afflictionUnmake, afflictionRestore } from "./affliction-run.mjs";
 import { coatStep, coatArm, coatUnarm, coatUnmake } from "./coat.mjs";
 import * as hold from "./hold.mjs";
+import { floorOf, unchecked } from "./condition-hold.mjs";
 import * as sustain from "./sustain.mjs";
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -115,8 +116,10 @@ async function reduceCondition(actor, slug, n, meta) {
   const c = actor.itemTypes.condition.find((x) => x.slug === slug && !x.isLocked && !x.grantedBy);
   const cur = c?._source?.system?.value?.value ?? c?.system?.value?.value ?? null;
   if (cur == null) return { op: "skipped" };
-  if (cur - n >= 1) {
-    await game.pf2e.ConditionManager.updateConditionValue(c.id, actor, cur - n);
+  const to = Math.max(cur - n, floorOf(actor, slug) ?? 0);   // удержание недугом: ниже floor не опускаем
+  if (to >= cur) return { op: "skipped" };
+  if (to >= 1) {
+    await game.pf2e.ConditionManager.updateConditionValue(c.id, actor, to);
     return { op: "raised", item: c, prev: cur, key: meta.key };   // откат возвращает прежнее значение (как у поднятого)
   }
   await actor.decreaseCondition(c, { forceRemove: true });
@@ -137,7 +140,8 @@ export function applyCondition(actor, spec /* {slug,value,policy,duration?} */, 
     if (spec.policy === "reduce") return reduceCondition(actor, slug, spec.value ?? 1, meta);
     const policy = spec.policy ?? "max";
     // зона всегда создаёт свою копию (meta.key "zone:<uuid>"), остальное работает с уже существующим состоянием
-    const existing = meta.source === "zone" ? null : actor.itemTypes.condition.find((c) => c.slug === slug && !c.isLocked && !c.grantedBy);   // выданное обёрткой-сроком не повышаем: истечёт вместе с чужим значением
+    // недуг (удерживаемое состояние) делает так же: pf2e допускает дубли, действует максимум (prepareSiblingData)
+    const existing = meta.source === "zone" || meta.source === "affliction" ? null : actor.itemTypes.condition.find((c) => c.slug === slug && !c.isLocked && !c.grantedBy);   // выданное обёрткой-сроком не повышаем: истечёт вместе с чужим значением
     if (existing) {
       const cur = existing._source?.system?.value?.value ?? existing.system?.value?.value ?? null;
       if (cur === null) return { op: "skipped" };   // не valued
@@ -167,6 +171,12 @@ export async function removeCondition(actor, slug) {
     const c = actor.itemTypes.condition.find((x) => x.slug === slug && !x.isLocked && !x.grantedBy);
     if (!c) return { op: "skipped" };
     const prev = c._source?.system?.value?.value ?? c.system?.value?.value ?? null;
+    const floor = floorOf(actor, slug);
+    if (floor != null && prev != null) {   // удержано недугом: снижаем до floor, не снимаем; откат (applyCondition max) вернёт значение
+      if (prev <= floor) return { op: "skipped" };
+      await game.pf2e.ConditionManager.updateConditionValue(c.id, actor, floor);
+      return { op: "removed", slug, prev };
+    }
     await actor.decreaseCondition(c, { forceRemove: true });
     if (actor.itemTypes.condition.some((x) => x.slug === slug)) return { op: "skipped" };   // не удалилось
     return { op: "removed", slug, prev };
@@ -375,8 +385,10 @@ export function alliesIn(actor, token, range, rel = "isAllyOf", withSelf = false
 }
 
 /** Набор roll options для `when` (как getRollOptions у pf2e-automations): опции броска и origin сообщения + outcome + цель (target:*) + опции автора и предмета. */
-async function whenOptions({ use, message, selfActor, targetDoc, originItem, degree, rollOptions }) {
+export async function whenOptions({ use, message, selfActor, targetDoc, originItem, degree, rollOptions }) {
   const set = new Set([...(rollOptions ?? []), ...(use.rollOptions ?? []), ...(message.flags?.pf2e?.origin?.rollOptions ?? [])]);   // use.rollOptions — сообщение активации (без origin)
+  // бросок проверки (use.kind "roll"): опции самого броска (check:statistic:*, action:*); target:* — только живые, ниже. Читаем с сообщения, в снимок не копируем: переброс = новое сообщение
+  if (use.kind === "roll") for (const o of message.flags?.pf2e?.context?.options ?? []) if (!/^target(?::|$)/.test(o)) set.add(o);
   if (degree != null) set.add(`outcome:${DEGREES[degree]}`);
   const first = inRange(use.targets)[0]?.uuid;
   const t = actorOf(targetDoc ?? (first ? await fromUuid(first) : null));
@@ -455,6 +467,7 @@ export function applyEffect(actor, spec /* {uuid, badge?} */, meta = {}, ctx = {
       ...(ctx.originItem && { traits: { value: (ctx.originItem.system?.traits?.value ?? []).filter((t) => t in valid) } })
     });
     if (own) { const o = data.system.context.origin; o.actor = actor.uuid; o.token = (ctx.target ?? actor.getActiveTokens(true, true)[0])?.uuid ?? null; }
+    data.system.context.origin.actor ??= actor.uuid;   // pf2e: origin.actor не может быть null (зона/опасность без источника) — автор сам получатель
     // уровень эффекта = круг сотворения: формулы @item.level (твёрдость Щита, бонус Защиты, руны) растут как при перетаскивании из карточки
     if (ctx.castRank != null && data.system.level) data.system.level.value = ctx.castRank;
     // срок шага (duration) заменяет срок эффекта; кубик («1d4» раундов) бросается здесь, expiry без указания берётся из эффекта
@@ -846,8 +859,9 @@ export async function undoSpent(o) {
   return true;
 }
 
-/** Откат записанного в ops: созданное удаляется, поднятое возвращается к prev; затем запись state чистится. */
-export async function undoOps(message, tokenKey) {
+/** Откат записанного в ops: созданное удаляется, поднятое возвращается к prev; затем запись state чистится. Законно снимает удерживаемое (unchecked), в том числе при перебросе (events.undoLog). */
+export const undoOps = (message, tokenKey) => unchecked(() => undoOpsInner(message, tokenKey));
+async function undoOpsInner(message, tokenKey) {
   const state = message.flags?.[MOD]?.use?.state ?? {};
   const places = [["challenge", state.challenge?.applied?.[tokenKey]], ["apply", state.apply?.[tokenKey]]];
   let undone = 0;

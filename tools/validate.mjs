@@ -7,7 +7,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { ROOT, ACCEPTED, DRAFTS, serializeDrafts, readJson, readOut, writeJson, writeText, outPath, arg, cmp, isMain } from "./lib.mjs";
-import { validateRule, activateOf, activateSpells, activateUses, withActivation, dupActivate, frequencyOf, enemiesOnly, strikeGate, strikeHitEffect, setWho, afflictionStages } from "../scripts/rules.mjs";
+import { validateRule, activateOf, activateSpells, activateUses, withActivation, dupActivate, frequencyOf, castProse, enemiesOnly, strikeGate, strikeHitEffect, setWho, afflictionStages } from "../scripts/rules.mjs";
 import { ruleToForm, formToRule } from "../scripts/sheet.mjs";
 import { BUILTIN } from "../scripts/builtin/index.mjs";
 import { stepCount } from "./triage.mjs";
@@ -23,7 +23,7 @@ const fmtErr = (e) => {
 
 export const SAVES = ["fortitude", "reflex", "will"];
 export const SKILLS = ["acrobatics", "arcana", "athletics", "crafting", "deception", "diplomacy", "intimidation", "medicine", "nature", "occultism", "performance", "religion", "society", "stealth", "survival", "thievery"];
-const CHECK_STATS = new Set([...SKILLS, "perception", "spell-attack", "attack"]);
+const CHECK_STATS = new Set([...SKILLS, "perception", "spell-attack", "attack", "impulse", "deviant"]);
 // автор: СЛ «заклинания» / «класса» / навыка (saves.mjs resolveDC); цель: любая её статистика (checks.mjs)
 // слаг класса (kineticist, commander…) — СЛ этого класса: getStatistic(slug) у pf2e отдаёт classDCs (архетип — не основной класс)
 export const CLASSES = ["alchemist", "animist", "barbarian", "bard", "champion", "cleric", "commander", "druid", "exemplar", "fighter", "guardian", "gunslinger", "inventor", "investigator", "kineticist", "magus", "monk", "oracle", "psychic", "ranger", "rogue", "runesmith", "sorcerer", "summoner", "swashbuckler", "thaumaturge", "witch", "wizard"];
@@ -61,6 +61,13 @@ export const notesOnly = (rule) => {
   return s.length > 0 && s.every((x) => x.note) && !activateOf(rule)?.length && !u?.challenge?.immunity && !u?.check?.immunity && !u?.zone && !(rule.onEvent ?? []).some((e) => e.challenge?.immunity) && !rule.onAttacked && !rule.macros?.length;
 };
 
+/** Числа предмета из текста вне «вы должны…»: СЛ заклинания предмета, бонус атаки заклинанием; nums(re, текст) -> Set чисел. Общая сверка cast-batch и модельного пути. */
+export function itemNumbers(html) {
+  const all = castProse(html), own = (s) => /\b(?:you|those)\b[^.]*\bmust\b/i.test(s);   // «You … must succeed at a …» — испытание самого владельца, не СЛ заклинания
+  const nums = (re, t) => new Set(t.split(/(?<=[.!?])\s+/).filter((s) => !own(s)).flatMap((s) => [...s.matchAll(re)].map((m) => +(m[1] ?? m[2]))));
+  return { all, nums, spellDc: nums(/\bspell DC\b[^.]{0,80}?(?<![-−+]\s?)(\d+)(?!\s*(?:status|circumstance|item)\b)|\bDC of (?:any|all|each) spells?[^.]{0,80}?(\d+)/gi, all), attacks: nums(/\bspell attack\b[^.]{0,80}?\+(\d+)/gi, all), counteracts: nums(/\bcounteract (?:check|modifier)\b[^.]{0,30}?\+(\d+)/gi, all) };
+}
+
 /** Содержательные проверки: ссылки существуют (и есть в тексте предмета), статистики из известных списков, builtin есть в реестре. html === null — не проверять текст. */
 export function semanticErrors(rule, refs, html = null) {
   const bad = [];
@@ -70,7 +77,8 @@ export function semanticErrors(rule, refs, html = null) {
     if (s.condition && !refs.conditions[s.condition.slug]) bad.push(`condition "${s.condition.slug}" does not exist in pf2e`);
     if (s.removeCondition && !refs.conditions[s.removeCondition.slug]) bad.push(`condition "${s.removeCondition.slug}" does not exist in pf2e`);
     for (const c of s.affliction?.def.stages.flatMap((st) => st.conditions) ?? []) if (!refs.conditions[c.slug]) bad.push(`affliction condition "${c.slug}" does not exist in pf2e`);
-    if (s.repeat?.statistic && !SAVES.includes(s.repeat.statistic)) bad.push(`repeat.statistic must be fortitude, reflex or will (got "${s.repeat.statistic}")`);
+    for (const h of s.affliction?.def.holds ?? []) if (!s.affliction.def.stages.some((st, i) => i + 1 >= (h.from ?? 1) && st.conditions.some((c) => c.slug === h.slug))) bad.push(`affliction holds "${h.slug}": no stage from ${h.from ?? 1} has this condition`);
+    if (s.repeat?.statistic &&!SAVES.includes(s.repeat.statistic)) bad.push(`repeat.statistic must be fortitude, reflex or will (got "${s.repeat.statistic}")`);
     // эффекты обхода укрытия — из пака модуля: ни в refs pf2e, ни в тексте предмета их нет
     if (isCoverBypass(s.effect?.uuid) && s.to !== "self") bad.push(`cover-bypass effect ${s.effect.uuid} must be applied with "to": "self" (it sits on the attacker, not on the target)`);
     for (const x of [s.effect?.uuid, s.unlessEffect]) if (x && !isCoverBypass(x) && !refs.effects[x]) bad.push(`effect ${x} not found: copy the UUID exactly from the item text`);
@@ -100,8 +108,17 @@ export function semanticErrors(rule, refs, html = null) {
   }
   const k = u?.check;
   if (k) {
-    for (const s of [k.statistic].flat()) if (!CHECK_STATS.has(s) && !isLore(s)) bad.push(`check.statistic "${s}" must be a skill, perception or spell-attack (an impulse attack roll \`@Check[impulse|…]\`: unsure: true, note \`impulse-attack\`)`);
+    for (const s of [k.statistic].flat()) if (!CHECK_STATS.has(s) && !isLore(s)) bad.push(`check.statistic "${s}" must be a skill, perception, spell-attack, impulse or deviant`);
     if (k.vs?.against && !VS_AGAINST.has(k.vs.against)) bad.push(`vs.against "${k.vs.against}" is unknown`);
+  }
+  // активация «сотворить»: бонус атаки/противодействия/СЛ предмета из текста должен быть в записи (модель их не переносит)
+  if (html) {
+    const t = itemNumbers(html), casts = (activateOf(rule) ?? []).flatMap((c) => [c, ...(c.choices ?? [])]);
+    // ponytail: числа — из всего текста предмета; при нескольких активациях неизвестно, чьё число (Ochre Fulcrum Lens: +21 у атаки, не у «сотворить»): тогда только «если задано — то из текста»
+    for (const c of activateOf(rule) ?? []) for (const e of [c, ...(c.choices ?? [])]) {
+      if (!e.spell) continue;
+      for (const [f, set] of [["attack", t.attacks], ["counteract", t.counteracts], ["dc", t.spellDc]]) if (set.size && (casts.length > 1 ? e[f] != null && !set.has(e[f]) : !set.has(e[f]))) bad.push(`activation ${c.id}: ${f} ${e[f] ?? "missing"} != text ${[...set]}: take \`${f}\` of the cast from the item text`);
+    }
   }
   for (const m of rule.macros ?? []) if (!m.builtin || !BUILTIN[m.builtin]) bad.push(`macro ${m.builtin ?? m.uuid} is not available: do not use macros`);
   const seen = new Set(bad);

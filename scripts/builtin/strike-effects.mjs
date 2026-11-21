@@ -4,6 +4,7 @@
 import { L, MOD, DEGREES, callGM } from "../util.mjs";
 import { isHeldReroll } from "../hold.mjs";
 import { esc, findFeat, whisper, cardButton, paHas } from "./lib.mjs";
+import { unchecked } from "./maneuver-gate.mjs";
 
 // База (CONFIG.PF2E.attackEffects pf2e): grab / knockdown / push / trip, «improved-» — бесплатное действие. Варианты с расстоянием и «или притянуть»
 // (push-10-feet, push-or-pull, improved-push-20-feet) — те же. Группа pf2e-automations, которой уступаем, у improved-push и trip её нет.
@@ -31,8 +32,8 @@ export function followUps(attackEffects, degree, own) {
 }
 
 /** Выполнить действие pf2e от лица актёра по цели (токен-документ). */
-export const perform = (actor, action, targetDoc) =>
-  game.pf2e.actions.get(action)?.use({ actors: [actor], target: targetDoc?.object ?? targetDoc?.actor });
+export const perform = (actor, action, targetDoc) =>   // Удар уже попал: Захват/Сбивание/Толчок законны — гейт требований манёвров (maneuver-gate) не нужен
+  unchecked(() => game.pf2e.actions.get(action)?.use({ actors: [actor], target: targetDoc?.object ?? targetDoc?.actor }));
 
 export async function onMessage(message) {
   const ctx = message.flags?.pf2e?.context;

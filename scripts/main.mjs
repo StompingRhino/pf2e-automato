@@ -31,6 +31,7 @@ import * as escape from "./escape.mjs";
 import * as events from "./events.mjs";
 import * as counterspell from "./counterspell.mjs";
 import * as hold from "./hold.mjs";
+import * as conditionHold from "./condition-hold.mjs";
 import * as cast from "./cast.mjs";
 import * as migrateActivate from "./migrate-activate.mjs";
 import * as affliction from "./affliction-run.mjs";
@@ -142,7 +143,7 @@ Hooks.once("socketlib.ready", () => {
 Hooks.once("setup", () => leader.start());
 
 Hooks.once("init", () => {
-  settings.init(); compat.init(); zone.init(); areaCleanup.init(); height.init(); saves.init(); use.init(); actions.init(); chat.init(); reactions.init(); sheet.init(); badge.init(); vision.init(); invis.init(); workshop.init(); hud.init(); damageGate.init(); damageButton.init(); rechargeButton.init(); turnConditions.init(); escape.init(); events.init(); counterspell.init(); sustain.init(); cast.init(); migrateActivate.init(); affliction.init(); summon.init(); initNexus();
+  settings.init(); compat.init(); zone.init(); areaCleanup.init(); height.init(); saves.init(); use.init(); actions.init(); chat.init(); reactions.init(); sheet.init(); badge.init(); vision.init(); invis.init(); workshop.init(); hud.init(); damageGate.init(); damageButton.init(); rechargeButton.init(); turnConditions.init(); escape.init(); events.init(); counterspell.init(); sustain.init(); cast.init(); migrateActivate.init(); affliction.init(); conditionHold.init(); summon.init(); initNexus();
   game.modules.get(MOD).api = {
     // контракт plan.md §2 main
     attachZone: zone.attachZone, sweepZone: zone.sweepZone, closeZone: zone.closeZone, expireZones: zone.expireZones,

@@ -203,3 +203,11 @@ test("parseActionRoll: атака заклинанием с карточки —
   assert.equal(r.rule.onUse.check.roll, "system");
   assert.equal(r.rule.onUse.check.byDegree.criticalSuccess[0].choice, "critical-success");
 });
+
+test("ruleFor: контекст предмета-способности (feat/action) находит запись bySource с roll:system; slug-поиск базовых действий цел", () => {
+  const sys = { rule: { onUse: { check: { roll: "system", statistic: "impulse" } } } };
+  const resolve = (s) => (s.item ? sys : { rule: { onUse: { check: { statistic: "athletics" } } } });
+  assert.equal(ruleFor(["elemental-blast"], resolve, { item: { type: "feat" } }).rule.onUse.check.statistic, "impulse");
+  assert.equal(ruleFor(["trip"], resolve, {}).rule.onUse.check.statistic, "athletics");
+  assert.equal(ruleFor(["trip"], resolve, { item: { type: "action" } }).slug, "trip");   // без roll:system контекст не перекрывает slug
+});

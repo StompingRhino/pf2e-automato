@@ -27,6 +27,7 @@ import * as suffocation from "./suffocation.mjs";
 import * as strikeEffects from "./strike-effects.mjs";
 import * as rage from "./rage.mjs";
 import * as meleeReach from "./melee-reach.mjs";
+import * as maneuverGate from "./maneuver-gate.mjs";
 import * as kineticAura from "./kinetic-aura.mjs";
 import * as impulseGate from "./impulse-gate.mjs";
 import * as tahInert from "./tah-inert.mjs";
@@ -147,6 +148,7 @@ export function initBuiltinHooks() {
   npcInvest.init();   // кнопка «Вложено» на листе NPC: pf2e рисует её только персонажу, без вложения правила предмета не работают
   animations.init();   // Атака исподтишка и камни вечных (Sequencer + JB2A) при переводе: распознавание не по английскому тексту; jb2a-macros уступаем
   Hooks.once("ready", meleeReach.install);   // Удар вблизи по цели вне досягаемости — броска нет, как у pf2e с дальним оружием
+  Hooks.once("ready", maneuverGate.install);   // требования Захвата/Подсечки/Толчка/…: рука, размер, досягаемость — броска нет
   // нехватка воздуха и конец ярости: хуки pf2e / документов, исполняет только активный ведущий
   const gmMacro = (id, fn) => (...a) => { if (isActiveGM() && modeOf("macro") !== "off") Promise.resolve().then(() => fn(...a)).catch((e) => console.error(`${MOD} | builtin ${id}`, e)); };
   Hooks.on("pf2e.endTurn", gmMacro("suffocation turn", suffocation.onEndTurn));

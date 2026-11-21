@@ -31,9 +31,10 @@ export function stageDelta(degree, virulent = false, streak = 0) {
   return streak + 1 >= 2 ? { delta: -1, streak: 0 } : { delta: 0, streak: streak + 1 };
 }
 
-/** Новая стадия: ниже первой — недуг снят; выше последней — остаёмся на ней, а при росте её эффекты повторяются (repeated). */
-export function advance(stage, delta, def) {
+/** Новая стадия: ниже первой — недуг снят (при locked — остаёмся на стадии 1, locked: true); выше последней — остаёмся на ней, а при росте её эффекты повторяются (repeated). */
+export function advance(stage, delta, def, locked = false) {
   const n = stage + delta, last = def.stages.length;
+  if (n <= 0 && locked) return { stage: 1, cleared: false, repeated: false, locked: true };
   if (n <= 0) return { stage: 0, cleared: true, repeated: false };
   if (n > last) return { stage: last, cleared: false, repeated: delta > 0 };
   return { stage: n, cleared: false, repeated: false };
@@ -48,7 +49,7 @@ export function startMeta(def, stage, { dc, now, by = null, origin = null, key =
   return {
     slug: slugOfDef(def), def, dc, statistic: def.save.statistic,
     traits: [...new Set([def.kind, ...(def.traits ?? [])])],
-    streak: 0, applied: null, pending: null, keys: key ? [key] : [],
+    streak: 0, locked: !!def.stageLock, applied: null, pending: null, keys: key ? [key] : [],
     endsAt: max == null ? null : now + max, onsetEnds: onset == null ? null : now + onset,
     nextAt: iv == null ? null : (onset == null ? now : now + onset) + iv,
     by, origin

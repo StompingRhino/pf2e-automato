@@ -1,7 +1,7 @@
 async () => {
   // Живые сценарии противников мира RustySpirit (папка «Противники»): копии «AF тест: …», тестовая сцена создаётся и удаляется сценарием.
   // Окна выбора модуля отвечаются очередью e.answers (подпись или значение варианта; null — закрыть).
-  // Параметры: window.__afEN = { only, skip, cleanOnly }. Результат — window.__afRSResult.
+  // Параметры: window.__afEN = { only, skip, cleanOnly }. Результат — window.__afENResult.
   const MOD = "pf2e-automato", PFX = "AF тест: ";
   const opts = { only: null, skip: [], ...(window.__afEN ?? {}) };
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -5,6 +5,7 @@
 // (Реактивный удар — цель к нажатию уже ушла; Двойной взмах проверяет оба оружия заранее).
 import { L, MOD } from "../util.mjs";
 import { modeOf } from "../settings.mjs";
+import { wrap as maneuverWrap } from "./maneuver-gate.mjs";
 
 /** Чистая: предмет — Удар ближнего боя (оружие, атака NPC, Стихийный взрыв вблизи). Заклинания касания не трогаем — их дальность ведёт range.mjs. */
 export const isMeleeStrike = (ctx) => ctx?.type === "attack-roll" && !!ctx.item?.isMelee && ["weapon", "melee", "action"].includes(ctx.item.type);
@@ -51,7 +52,7 @@ async function wrap(orig, ...args) {
     try { far = check(args[1]); } catch (e) { console.warn(`${MOD} | melee-reach`, e); }
   }
   if (far) { ui.notifications.warn(L("builtin.reach.out", far)); return null; }   // как pf2e с дальним оружием: null — броска нет
-  return orig(...args);
+  return maneuverWrap(orig, ...args);   // одна обёртка Check.roll на модуль (libWrapper не даёт второй): гейт манёвров — цепочкой
 }
 
 let installed = false;
@@ -62,7 +63,7 @@ export function install() {
     try { libWrapper.register(MOD, "game.pf2e.Check.roll", wrap, "MIXED"); installed = true; }
     catch (e) {   // например, другой модуль держит OVERRIDE; installed не ставим — повтор возможен
       console.error(`${MOD} | melee-reach: libWrapper.register`, e);
-      if (game.user?.isGM) ui.notifications.warn(L("builtin.wrapFailed", { what: L("builtin.reachName"), error: e?.message ?? e }));
+      if (game.user?.isGM) ui.notifications.warn(L("builtin.wrapFailed", { what: `${L("builtin.reachName")}, ${L("builtin.maneuverGate.name")}`, error: e?.message ?? e }));
     }
     return;
   }

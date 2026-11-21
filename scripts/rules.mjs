@@ -1,4 +1,5 @@
 import { MOD, DEGREES, ENDS_EARLY, errText, sluggify } from "./util.mjs";
+import { UNLINKED } from "./affliction.mjs";
 import { S, rev } from "./settings.mjs";
 import { isPredicate } from "./predicate.mjs";
 import { normalizeMods } from "./inline-effect.mjs";
@@ -302,6 +303,7 @@ export function coatPlaces(rule) {
 export const AFFLICTION_KINDS = ["poison", "disease", "curse"];
 export const AFFLICTION_SAVES = ["fortitude", "reflex", "will"];
 export const MAX_STAGES = 12;
+const HOLD_MODES = ["keep", "present"];   // keep — не снимать и не снижать ниже значения стадии; present — не снимать, снижать до 1
 function vAfflDur(d, path, err) {
   if (!isObj(d) || !(isInt(d.value) && d.value >= 1) || !APPLY_UNITS.includes(d.unit)) { err.push(E("afflict.dur", path)); return null; }
   return { value: d.value, unit: d.unit };
@@ -351,9 +353,18 @@ function vAffliction(x, path, err) {
   if (stages.includes(null)) return null;
   const stage = x.stage ?? 1;
   if (!(isInt(stage) && stage >= 1 && stage <= stages.length)) return bad("afflict.stage", `${path}.stage`);
+  // holds: запрет снять/снизить состояние, пока недуг идёт; держать можно только UNLINKED и обёрнутые (restrict) — ENDS_EARLY без UNLINKED не держатся
+  let holds = null;
+  if (d.holds != null) {
+    const h = d.holds;
+    if (!Array.isArray(h) || h.length > 6 || !h.every((e) => isObj(e) && Object.keys(e).every((k) => ["slug", "mode", "from"].includes(k)) && isStr(e.slug) && SLUG.test(e.slug) && !(ENDS_EARLY.has(e.slug) && !UNLINKED.has(e.slug))
+      && (e.mode == null || HOLD_MODES.includes(e.mode)) && (e.from == null || (isInt(e.from) && e.from >= 1 && e.from <= stages.length))) || new Set(h.map((e) => e.slug)).size !== h.length) return bad("afflict.holds", `${path}.def.holds`);
+    holds = h.map((e) => ({ slug: e.slug, ...(e.mode === "present" && { mode: "present" }), ...(e.from != null && { from: e.from }) }));
+  }
+  if (d.stageLock != null && typeof d.stageLock !== "boolean") return bad("afflict.stageLock", `${path}.def.stageLock`);
   return {
     stage,
-    def: { name: d.name.trim(), kind: d.kind, save: { statistic: d.save.statistic, ...(d.save.dc != null && { dc: d.save.dc }) }, maxDuration: durs.maxDuration ?? null, onset: durs.onset ?? null, virulent: !!d.virulent, ...(d.traits?.length && { traits: [...d.traits] }), ...(d.note?.trim() && { note: clipNote(d.note.trim()) }), stages }
+    def: { name: d.name.trim(), kind: d.kind, save: { statistic: d.save.statistic, ...(d.save.dc != null && { dc: d.save.dc }) }, maxDuration: durs.maxDuration ?? null, onset: durs.onset ?? null, virulent: !!d.virulent, ...(d.traits?.length && { traits: [...d.traits] }), ...(d.note?.trim() && { note: clipNote(d.note.trim()) }), ...(holds?.length && { holds }), ...(d.stageLock && { stageLock: true }), stages }
   };
 }
 

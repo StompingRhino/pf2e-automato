@@ -16,7 +16,7 @@
         "confused": "Confused", "disease": "Disease", "poison": "Poison", "sickened": "Sickened", "injuries": "Injuries",
         "speed": "Speed penalty", "enfeebled": "Enfeebled 1", "flanking": "Can't flank", "cover": "No bonus from cover", "precision": "Extra precision damage", "heartless": "Weakness to bleed and poison", "vicious": "Weakness to physical damage",
         "plus": "+1 status to AC", "minus": "−1 status to AC",
-        "feint": "Regular Feint", "overextend": "Overextending Feint: −2 to the target’s attacks against you"
+        "feint": "Regular Feint", "goading": "Goading Feint: −2 to the target’s attacks", "overextend": "Overextending Feint: −2 to the target’s attacks against you"
       }
     },
     "apply": {
