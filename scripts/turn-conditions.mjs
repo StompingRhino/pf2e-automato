@@ -57,8 +57,7 @@ async function onEndTurn(combatant) {
   const actor = combatant?.actor;
   if (!isActiveGM() || !actor || modeOf("frightened") === "off") return;
   await queue(`actor:${actor.uuid}`, async () => {
-    const floor = floorOf(actor, "frightened") ?? 0;
-    const inst = actor.itemTypes.condition.filter((c) => c.slug === "frightened").map((c) => ({ id: c.id, value: c.value ?? 0, locked: !!c.isLocked, floor }));
+    const inst = actor.itemTypes.condition.filter((c) => c.slug === "frightened").map((c) => ({ id: c.id, value: c.value ?? 0, locked: !!c.isLocked, floor: floorOf(actor, "frightened", c.id) ?? 0 }));   // floor — только у удержанной копии
     for (const { id, to } of frightenedPlan(inst, decreaserOn())) {
       try { await game.pf2e.ConditionManager.updateConditionValue(id, actor, to); }
       catch (e) { console.error(`${MOD} | frightened`, e); }
@@ -71,8 +70,7 @@ async function onStartTurn(combatant) {
   if (!isActiveGM() || !actor || modeOf("sickened") === "off") return;
   const c = actor.getCondition?.("sickened");
   if (!c) return;
-  const floor = floorOf(actor, "sickened") ?? 0;
-  if (!retchPossible(actor.itemTypes.condition.filter((x) => x.slug === "sickened").map((x) => ({ value: x.value ?? 1, floor })))) return;   // удержана недугом: «Избавиться» не поможет
+  if (!retchPossible(actor.itemTypes.condition.filter((x) => x.slug === "sickened").map((x) => ({ value: x.value ?? 1, floor: floorOf(actor, "sickened", x.id) ?? 0 })))) return;   // удержана недугом: «Избавиться» не поможет
   const dc = sourceDC([c, actor.items.get(c.flags?.pf2e?.grantedBy?.id)], (id) => game.messages.get(id));
   const field = dc == null ? `<input type="number" class="paf-dc-input" data-af-retch-dc placeholder="${L("turn.dc")}">` : "";
   await whisperDC(actor, "turn.sickened", { name: esc(actor.name), value: c.value }, dc,
@@ -83,8 +81,7 @@ async function onStartTurn(combatant) {
 export function applyRetch(actorUuid, degree) {
   return queue(`actor:${actorUuid}`, async () => {
     const actor = await fromUuid(actorUuid);
-    const floor = actor ? floorOf(actor, "sickened") ?? 0 : 0;
-    const inst = actor?.itemTypes.condition.filter((c) => c.slug === "sickened").map((c) => ({ id: c.id, value: c.value ?? 1, locked: !!c.isLocked, floor })) ?? [];
+    const inst = actor?.itemTypes.condition.filter((c) => c.slug === "sickened").map((c) => ({ id: c.id, value: c.value ?? 1, locked: !!c.isLocked, floor: floorOf(actor, "sickened", c.id) ?? 0 })) ?? [];
     if (!inst.length) return { ok: true, skipped: true };
     for (const { id, to } of retchPlan(inst, degree)) await game.pf2e.ConditionManager.updateConditionValue(id, actor, to);
     return { ok: true };

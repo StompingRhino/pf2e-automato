@@ -46,10 +46,19 @@ test("reduceCondition (policy reduce): до floor, не снимает; на flo
 test("removeCondition при floor: снижает до floor (откат вернёт prev), не снимает; на floor — skipped", async () => {
   let w = world((c) => ({ sickened: { floor: 1, id: c.id } }), 3);
   const r = await removeCondition(w.actor, "sickened");
-  assert.deepEqual([r.op, r.prev], ["removed", 3]); assert.deepEqual(w.calls, [["set", "s1", 1]]);
+  assert.deepEqual([r.op, r.prev, r.item.id], ["raised", 3, "s1"]); assert.deepEqual(w.calls, [["set", "s1", 1]]);   // только снижено: откат — по документу
   assert.equal((await removeCondition(w.actor, "sickened")).op, "skipped");
   w = world(() => ({}), 3);
   assert.equal((await removeCondition(w.actor, "sickened")).op, "removed"); assert.deepEqual(w.calls, [["remove", "s1"]]);
+});
+
+test("removeCondition при копии зоны: снимает копию, удержанную не трогает", async () => {
+  const w = world((c) => ({ sickened: { floor: 1, id: c.id } }), 1);
+  const zone = { id: "z1", type: "condition", slug: "sickened", system: { value: { value: 2 } }, isLocked: false };
+  w.actor.items.push(zone);
+  const r = await removeCondition(w.actor, "sickened");
+  assert.deepEqual([r.op, r.prev], ["removed", 2]); assert.deepEqual(w.calls, [["remove", "z1"]]);
+  assert.equal((await removeCondition(w.actor, "sickened")).op, "skipped");   // осталась удержанная на floor
 });
 
 test("undoOps: откат снимает удерживаемое состояние несмотря на floor; обычное удаление — блокируется", async () => {

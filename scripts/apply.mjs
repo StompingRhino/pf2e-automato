@@ -108,22 +108,28 @@ async function createTimed(actor, spec, meta, ctx, base) {
 // при активном Vision видимость — только метками матрицы, без состояний на актёрах
 const SIGHT_CONDITIONS = new Set(["concealed", "hidden", "undetected", "unnoticed", "observed"]);
 
+/** Копия состояния для снятия/снижения: удерживаемую недугом — в последнюю очередь (её floor не относится к копиям других источников). */
+function pickCondition(actor, slug) {
+  const cs = actor.itemTypes.condition.filter((x) => x.slug === slug && !x.isLocked && !x.grantedBy);
+  return cs.find((x) => floorOf(actor, slug, x.id) == null) ?? cs[0];
+}
+
 /**
  * policy "reduce": действующее значение состояния падает на n, на нуле состояние снимается (Аура отваги). Нет состояния, оно без значения или выдано другим предметом — пропуск.
  * Вызывается внутри очереди актёра (applyCondition). -> {op:"raised", item, prev, key} | {op:"removed", slug, prev, key} | {op:"skipped"}
  */
 async function reduceCondition(actor, slug, n, meta) {
-  const c = actor.itemTypes.condition.find((x) => x.slug === slug && !x.isLocked && !x.grantedBy);
+  const c = pickCondition(actor, slug);
   const cur = c?._source?.system?.value?.value ?? c?.system?.value?.value ?? null;
   if (cur == null) return { op: "skipped" };
-  const to = Math.max(cur - n, floorOf(actor, slug) ?? 0);   // удержание недугом: ниже floor не опускаем
+  const to = Math.max(cur - n, floorOf(actor, slug, c.id) ?? 0);   // удержание недугом: ниже floor не опускаем
   if (to >= cur) return { op: "skipped" };
   if (to >= 1) {
     await game.pf2e.ConditionManager.updateConditionValue(c.id, actor, to);
     return { op: "raised", item: c, prev: cur, key: meta.key };   // откат возвращает прежнее значение (как у поднятого)
   }
   await actor.decreaseCondition(c, { forceRemove: true });
-  return actor.itemTypes.condition.some((x) => x.slug === slug) ? { op: "skipped" } : { op: "removed", slug, prev: cur, key: meta.key };
+  return actor.itemTypes.condition.includes(c) ? { op: "skipped" } : { op: "removed", slug, prev: cur, key: meta.key };
 }
 
 export function applyCondition(actor, spec /* {slug,value,policy,duration?} */, meta = {}, ctx = {}) {
@@ -164,21 +170,21 @@ export function applyCondition(actor, spec /* {slug,value,policy,duration?} */, 
 /**
  * Снять состояние целиком (шаг removeCondition: Встать, Стабилизация). Выданное другим предметом и заблокированное не трогаем (как applyCondition);
  * не исчезло после удаления — skipped. Снятие dying по правилам pf2e: Раненый +1, при 0 ОЗ — Без сознания (его держал GrantItem dying и ушёл с ним, без него pf2e считает существо мёртвым).
- * -> {op:"removed", slug, prev, also?: [{slug, prev}]} | {op:"skipped"}. also — созданное/поднятое попутно: откат возвращает.
+ * -> {op:"removed", slug, prev, also?: [{slug, prev}]} | {op:"raised", item, prev} (удержанное недугом — только снижено до floor) | {op:"skipped"}. also — созданное/поднятое попутно: откат возвращает.
  */
 export async function removeCondition(actor, slug) {
   const r = await queue(`actor:${actor.uuid}`, async () => {
-    const c = actor.itemTypes.condition.find((x) => x.slug === slug && !x.isLocked && !x.grantedBy);
+    const c = pickCondition(actor, slug);
     if (!c) return { op: "skipped" };
     const prev = c._source?.system?.value?.value ?? c.system?.value?.value ?? null;
-    const floor = floorOf(actor, slug);
-    if (floor != null && prev != null) {   // удержано недугом: снижаем до floor, не снимаем; откат (applyCondition max) вернёт значение
+    const floor = floorOf(actor, slug, c.id);
+    if (floor != null && prev != null) {   // удержано недугом: снижаем до floor, не снимаем; откат вернёт значение этому документу
       if (prev <= floor) return { op: "skipped" };
       await game.pf2e.ConditionManager.updateConditionValue(c.id, actor, floor);
-      return { op: "removed", slug, prev };
+      return { op: "raised", item: c, prev };
     }
     await actor.decreaseCondition(c, { forceRemove: true });
-    if (actor.itemTypes.condition.some((x) => x.slug === slug)) return { op: "skipped" };   // не удалилось
+    if (actor.itemTypes.condition.includes(c)) return { op: "skipped" };   // не удалилось
     return { op: "removed", slug, prev };
   });
   if (r.op !== "removed" || slug !== "dying") return r;
@@ -737,6 +743,7 @@ export async function applyOps(message, tokenKey, steps, ctx = {}) {
     if (step.removeCondition) {
       const r = await removeCondition(actor, step.removeCondition.slug);
       if (r.op === "removed") ops.push({ op: "removed", slug: r.slug, actor: actor.uuid, ...(r.prev != null && { prev: r.prev }), ...(r.also && { also: r.also }) });
+      else if (r.op === "raised") ops.push({ op: "raised", item: r.item.uuid, prev: r.prev });   // удержанное недугом: снижено до floor
       continue;
     }
     if (step.refundFocus) {   // очки фокуса самого заклинания (Lingering Composition: 1); повтор шага по ключу не возвращает второй раз

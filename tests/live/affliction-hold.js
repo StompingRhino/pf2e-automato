@@ -60,7 +60,7 @@ async () => {
   };
   /** Ручная операция с листа; возвращает, было ли предупреждение удержания именно этого недуга. */
   const manual = async (fn, def) => {
-    warns.length = 0; hold.resetToasts();   // тост — раз за ход на (актёр, slug): сбрасываем, чтобы видеть каждый отказ
+    warns.length = 0; hold.resetToasts();   // тост гасит дубли в течение 2 с на (актёр, slug): сбрасываем, чтобы видеть каждый отказ
     try { await fn(); } catch (e) { warns.push(`ИСКЛЮЧЕНИЕ ${e}`); }
     await wait(500);
     return warns.some((w) => w.includes(def.name) && /Alt/.test(w));

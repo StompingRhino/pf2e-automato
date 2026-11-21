@@ -8,7 +8,6 @@ import { UNLINKED } from "./affliction.mjs";
 
 const metaOf = (carrier) => carrier?.flags?.[MOD]?.meta?.affliction ?? null;
 const itemsOf = (actor) => [...(actor?.items ?? [])];
-const valueOf = (i) => i?.system?.value?.value ?? 1;   // состояние без значения — 1
 
 /** Чистая: удерживаемые записи актёра. valid — [{slug, floor, id, carrier}]; orphans — [{carrier, slugs}] (id уже нет на актёре). */
 export function readHeld(actor) {
@@ -26,12 +25,12 @@ export function readHeld(actor) {
   return { valid, orphans };
 }
 
-/** Чистая: floor состояния slug у актёра (максимум по живым записям) или null — не удерживается. */
+/** Чистая: floor состояния slug у актёра (максимум по живым записям) или null — не удерживается. id — только этот документ (копии зоны и других источников не удержаны). */
 const limitsOff = () => { try { return modeOf("limits") === "off"; } catch { return false; } };   // тесты без настроек
 
-export function floorOf(actor, slug) {
+export function floorOf(actor, slug, id = null) {
   if (limitsOff()) return null;   // решение ГМа: при mode.limits=off запрета нет нигде
-  const f = readHeld(actor).valid.filter((h) => h.slug === slug).map((h) => h.floor);
+  const f = readHeld(actor).valid.filter((h) => h.slug === slug && (id == null || h.id === id)).map((h) => h.floor);
   return f.length ? Math.max(...f) : null;
 }
 
@@ -40,7 +39,7 @@ export const newValue = (changes) => changes?.["system.value.value"] ?? changes?
 
 /**
  * Чистая: {slug, floor, carrier, how: "remove"|"reduce"}, если операция над состоянием item нарушает удержание; иначе null.
- * change — { delete: true } | { value: n }. Другой экземпляр того же slug со значением ≥ floor снимает запрет.
+ * change — { delete: true } | { value: n }. Копия того же slug из другого источника запрет не снимает: она кончится раньше недуга (обход — Alt).
  */
 export function violation(actor, item, change) {
   if (!actor || !item) return null;
@@ -59,8 +58,7 @@ export function violation(actor, item, change) {
     else if (Number.isFinite(change.value) && change.value < h.floor) how = "reduce";
     else return null;
   } else return null;
-  const other = itemsOf(actor).some((i) => i.type === "condition" && i.slug === h.slug && i.id !== doc.id && valueOf(i) >= h.floor);
-  return other ? null : { slug: h.slug, floor: h.floor, carrier: h.carrier, how };
+  return { slug: h.slug, floor: h.floor, carrier: h.carrier, how };
 }
 
 // Счётчик обхода — по актёру (uuid); без актёра ("*") — операция сразу над несколькими (undoOps)
@@ -73,13 +71,12 @@ export async function unchecked(fn, actor = null) {
 }
 const skipped = (actor) => !!(skips.get("*") || skips.get(actor?.uuid));
 
-/** Тост — не чаще раза на (актёр, slug) за ход боя; вне боя — за 10 с. Отмена операции от тоста не зависит. */
+/** Тост — не чаще раза в 2 с на (актёр, slug): гасит дубли одной операции (каскад обёртки), повторная попытка позже снова предупреждает. Отмена от тоста не зависит. */
 const toasted = new Map();
 export const resetToasts = () => toasted.clear();   // живые сценарии
-export function toastDue(key, combat = globalThis.game?.combat, t = Date.now()) {
-  const stamp = combat?.started ? `${combat.id}:${combat.round}:${combat.turn}` : null, prev = toasted.get(key);
-  if (prev && (stamp ? prev.stamp === stamp : !prev.stamp && t - prev.t < 10000)) return false;
-  toasted.set(key, { stamp, t });
+export function toastDue(key, t = Date.now()) {
+  if (t - (toasted.get(key) ?? -Infinity) < 2000) return false;
+  toasted.set(key, t);
   return true;
 }
 

@@ -30,11 +30,13 @@ test("обёрнутое состояние (не UNLINKED): удаление т
   assert.equal(violation(a, c, { value: 1 }).how, "reduce");
 });
 
-test("другой экземпляр со значением ≥ floor — не блокируем; меньше floor — блокируем", () => {
-  const s = cond("s1", "sickened", 2), a = actorOf(carrier("c", { sickened: { floor: 2, id: "s1" } }), s, cond("s2", "sickened", 2));
-  assert.equal(violation(a, s, { delete: true }), null);
-  const b = actorOf(carrier("c", { sickened: { floor: 2, id: "s1" } }), s, cond("s2", "sickened", 1));
-  assert.ok(violation(b, s, { delete: true }));
+test("копия из другого источника запрет не снимает и сама не держится; floorOf по id — только удержанная", () => {
+  const s = cond("s1", "sickened", 2), z = cond("s2", "sickened", 2), a = actorOf(carrier("c", { sickened: { floor: 2, id: "s1" } }), s, z);
+  assert.equal(violation(a, s, { delete: true }).how, "remove");   // зона кончится раньше недуга
+  assert.equal(violation(a, z, { delete: true }), null);
+  assert.equal(floorOf(a, "sickened", "s1"), 2);
+  assert.equal(floorOf(a, "sickened", "s2"), null);
+  assert.equal(floorOf(a, "sickened"), 2);
 });
 
 test("состояние без записи held и не-состояние — не держатся", () => {
@@ -99,13 +101,9 @@ test("unchecked считает по актёру: обход одного не �
   await unchecked(async () => { assert.equal(hooks.preDeleteItem(s1), undefined); assert.equal(hooks.preDeleteItem(s2), false); }, s1.parent);
 });
 
-test("toastDue: раз за ход боя на (актёр, slug); новый ход — снова; вне боя — раз в 10 с", () => {
-  const t1 = { started: true, id: "c", round: 1, turn: 0 }, t2 = { ...t1, turn: 1 };
-  assert.equal(toastDue("a:s", t1, 0), true);
-  assert.equal(toastDue("a:s", t1, 5), false);
-  assert.equal(toastDue("b:s", t1, 5), true);
-  assert.equal(toastDue("a:s", t2, 6), true);
-  assert.equal(toastDue("o:s", null, 0), true);
-  assert.equal(toastDue("o:s", null, 9999), false);
-  assert.equal(toastDue("o:s", null, 10000), true);
+test("toastDue: дубль одной операции (2 с) гасится, повторная попытка позже — снова тост", () => {
+  assert.equal(toastDue("a:s", 0), true);
+  assert.equal(toastDue("a:s", 5), false);
+  assert.equal(toastDue("b:s", 5), true);
+  assert.equal(toastDue("a:s", 2000), true);
 });
