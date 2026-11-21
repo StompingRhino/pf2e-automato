@@ -1,11 +1,12 @@
 // Требования базовых действий (Requirements в описании, CLAUDE.md §1.1): Захват/Подсечка/Толчок/Разоружение — свободная рука и цель не больше чем на размер крупнее;
 // Перемещение — рука или удержание цели, размер; Финт — досягаемость ближнего боя; Грязный приём — рука и досягаемость; Деморализация и Остроумная фраза — 30 фт.
-// pf2e этого не проверяет (в pf2e.mjs нет проверок руки/размера у действий). Форма — как melee-reach.mjs: обёртка game.pf2e.Check.roll, броска нет, предупреждение, Alt обходит.
+// pf2e этого не проверяет (в pf2e.mjs нет проверок руки/размера у действий). Форма — как melee-reach.mjs: подписчик check-hook.mjs (единая обёртка game.pf2e.Check.roll), броска нет, предупреждение, Alt обходит.
 // Рука — handsReallyFree: щит занимает руку (текст правил); pf2e handsFree щит намеренно не считает. Предметы с чертой free-hand руку не занимают. Оружие манёвра — готовый Удар с чертой trip/shove/disarm/grapple (TraitDescription*: «даже без свободной руки, досягаемость оружия»).
 // Ловим только «голое» действие: бросок с context.item другого предмета (Slam Down, Ты следующий) и атака заклинанием пропускаются — у них свои условия.
 import { L, MOD } from "../util.mjs";
 import { modeOf } from "../settings.mjs";
 import { pickSource } from "./melee-reach.mjs";
+import * as checkHook from "./check-hook.mjs";
 
 const MAN = { hand: true, size: true, reach: true };
 /** Действия группы: hand — нужна свободная рука; hold — рука не нужна, если цель уже схвачена; size — не больше +1 размера; reach — досягаемость ближнего боя; range — дальность, фт; trait — оружие с чертой. */
@@ -141,19 +142,24 @@ export function onTextClick(ev) {
   if (other?.slug && other.slug !== slug) fromText = Date.now() + 2000;   // ponytail: окно 2 с, pf2e бросает до диалога; бросок другого актёра в это окно проскочит
 }
 
-export async function wrap(orig, ...args) {
+/** Подписчик check-hook: нарушено требование — предупреждение, броска нет (false). */
+export async function gate(_check, context) {
   let v = null;
   if (!skip && !altHeld() && modeOf("limits") !== "off") {
-    try { v = check(args[1]); } catch (e) { console.warn(`${MOD} | maneuver-gate`, e); }
+    try { v = check(context); } catch (e) { console.warn(`${MOD} | maneuver-gate`, e); }
   }
-  if (v) { ui.notifications.warn(L(`builtin.maneuverGate.${v.key}`, { ...v, d: Math.round(v.d ?? 0) })); return null; }
-  return orig(...args);
+  if (v) { ui.notifications.warn(L(`builtin.maneuverGate.${v.key}`, { ...v, d: Math.round(v.d ?? 0) })); return false; }
 }
+
+/** gate вокруг orig (для тестов и прямого вызова). */
+export async function wrap(orig, ...args) { return (await gate(args[0], args[1])) === false ? null : orig(...args); }
 
 let installed = false;
 /** Идемпотентно; вызывать после ready (game.pf2e.Check есть). */
 export function install() {
   if (installed || !globalThis.game?.pf2e?.Check?.roll) return;
   document.addEventListener("click", onTextClick, true);
-  installed = true;   // сам Check.roll не оборачивает: wrap зовёт обёртка melee-reach (libWrapper — одна обёртка функции на модуль)
+  checkHook.subscribe(gate, L("builtin.maneuverGate.name"));   // одна обёртка Check.roll на модуль — check-hook.mjs
+  checkHook.install();
+  installed = true;
 }

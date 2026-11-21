@@ -1,11 +1,11 @@
 // Досягаемость Удара в ближнем бою. pf2e блокирует дальнюю атаку за пределом дальности («The target is out of range», pf2e.mjs ~20441/35991/24505),
 // а ближнюю по цели вне досягаемости пропускает. Делаем так же, как система с дальним оружием: бросок не делается, предупреждение.
-// Точка — обёртка game.pf2e.Check.roll (хука «до броска» у pf2e нет). Только квадратная сетка и токены на текущей сцене (как range.mjs).
+// Точка — подписчик check-hook.mjs (единая обёртка game.pf2e.Check.roll; хука «до броска» у pf2e нет). Только квадратная сетка и токены на текущей сцене (как range.mjs).
 // Обход: Alt при клике (ручная прибавка досягаемости — Руки-щупальца до 20 фт, решение ГМа) и unchecked() для бросков самого модуля
 // (Реактивный удар — цель к нажатию уже ушла; Двойной взмах проверяет оба оружия заранее).
 import { L, MOD } from "../util.mjs";
 import { modeOf } from "../settings.mjs";
-import { wrap as maneuverWrap } from "./maneuver-gate.mjs";
+import * as checkHook from "./check-hook.mjs";
 
 /** Чистая: предмет — Удар ближнего боя (оружие, атака NPC, Стихийный взрыв вблизи). Заклинания касания не трогаем — их дальность ведёт range.mjs. */
 export const isMeleeStrike = (ctx) => ctx?.type === "attack-roll" && !!ctx.item?.isMelee && ["weapon", "melee", "action"].includes(ctx.item.type);
@@ -46,28 +46,17 @@ export async function unchecked(fn) {
 
 const altHeld = () => !!globalThis.game?.keyboard?.isModifierActive?.("Alt");
 
-async function wrap(orig, ...args) {
+/** Подписчик check-hook: Удар вблизи вне досягаемости — предупреждение, броска нет (false), как pf2e с дальним оружием. */
+async function gate(_check, context) {
   let far = null;
   if (!skip && !altHeld() && modeOf("limits") !== "off") {
-    try { far = check(args[1]); } catch (e) { console.warn(`${MOD} | melee-reach`, e); }
+    try { far = check(context); } catch (e) { console.warn(`${MOD} | melee-reach`, e); }
   }
-  if (far) { ui.notifications.warn(L("builtin.reach.out", far)); return null; }   // как pf2e с дальним оружием: null — броска нет
-  return maneuverWrap(orig, ...args);   // одна обёртка Check.roll на модуль (libWrapper не даёт второй): гейт манёвров — цепочкой
+  if (far) { ui.notifications.warn(L("builtin.reach.out", far)); return false; }
 }
 
-let installed = false;
-/** Идемпотентно; вызывать после ready (game.pf2e.Check есть). */
+/** Идемпотентно; вызывать после ready (game.pf2e.Check есть). Одна обёртка Check.roll на модуль — check-hook.mjs. */
 export function install() {
-  if (installed || !globalThis.game?.pf2e?.Check?.roll) return;
-  if (game.modules.get("lib-wrapper")?.active && globalThis.libWrapper) {
-    try { libWrapper.register(MOD, "game.pf2e.Check.roll", wrap, "MIXED"); installed = true; }
-    catch (e) {   // например, другой модуль держит OVERRIDE; installed не ставим — повтор возможен
-      console.error(`${MOD} | melee-reach: libWrapper.register`, e);
-      if (game.user?.isGM) ui.notifications.warn(L("builtin.wrapFailed", { what: `${L("builtin.reachName")}, ${L("builtin.maneuverGate.name")}`, error: e?.message ?? e }));
-    }
-    return;
-  }
-  installed = true;
-  const C = game.pf2e.Check, orig = C.roll.bind(C);
-  C.roll = (...a) => wrap(orig, ...a);
+  checkHook.subscribe(gate, L("builtin.reachName"));
+  checkHook.install();
 }

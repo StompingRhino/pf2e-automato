@@ -3,8 +3,9 @@
 // запоминаем по клику «Создать» на листе (кнопка craft-item в строке li[data-item-uuid], лист зовёт craft напрямую, мимо game.pf2e.actions)
 // и по вызову game.pf2e.actions.craft (макрос, /act); модификатор добавляем в общей точке проверки — game.pf2e.Check.roll при опции action:craft.
 // Группа (tools/out/items.json): Tattoo Artist — вычислимо; Specialty Crafting — у pf2e переключатель в окне броска; Schematic Scanner — условие неизвестно.
-import { MOD } from "../util.mjs";
+import { MOD, L } from "../util.mjs";
 import { modeOf } from "../settings.mjs";
+import * as checkHook from "./check-hook.mjs";
 
 /** slug черты -> признак предмета и величина бонуса по рангу Ремесла. */
 export const BONUS = { "tattoo-artist": { trait: "tattoo", value: (rank) => (rank >= 3 ? 2 : 1) } };
@@ -44,15 +45,8 @@ async function addBonus(check, context) {
 }
 
 function wrap() {
-  const Check = game.pf2e?.Check, roll = Check?.roll;
-  if (typeof roll === "function" && !roll[MOD]) {
-    const wrapped = async function (check, context = {}, ...rest) {
-      try { await addBonus(check, context); } catch (e) { console.error(`${MOD} | craft-bonus`, e); }
-      return roll.call(this, check, context, ...rest);
-    };
-    wrapped[MOD] = true;
-    Check.roll = wrapped;
-  }
+  checkHook.subscribe(addBonus, L("builtin.craftBonusName"));   // одна обёртка Check.roll на модуль — check-hook.mjs (сбой подписчика бросок не срывает)
+  checkHook.install();
   const craft = game.pf2e?.actions?.craft;
   if (typeof craft === "function" && !craft[MOD]) {
     const wrappedCraft = function (opts = {}) {

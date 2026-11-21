@@ -127,6 +127,7 @@
       "computedName": "computed roll options",
       "computedNoNeutralize": "pf2e-automato: the toggle of a computed option (Pack Attack) is not hidden — the option is not added to damage. Likely cause: a conflict with another module or the pf2e version. The «Computed roll options» mode can be turned off.",
       "reachName": "melee reach",
+      "craftBonusName": "Tattoo Artist Crafting bonus",
       "inertAction": "This action only describes the ability — attack and roll damage with its strike buttons below.",
       "reach": { "out": "{name} is out of reach: {d} ft, reach {r} ft. Alt-click to strike anyway." },
       "maneuverGate": {
