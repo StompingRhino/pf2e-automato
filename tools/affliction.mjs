@@ -6,12 +6,17 @@ import { VALUED, NOTE_MAX, afflictionStages, parseCheck, validateRule, DAMAGE_TY
 import { STEP_TARGETS, BONUS_TYPES } from "../scripts/workshop/effect.mjs";
 import { normalizeMods } from "../scripts/inline-effect.mjs";
 import { ENDS_EARLY } from "../scripts/util.mjs";
-import { UNLINKED } from "../scripts/affliction.mjs";
+import { UNLINKED, isRandom } from "../scripts/affliction.mjs";
 
 const UNIT = { r: "rounds", m: "minutes", h: "hours", d: "days" };
 // неделя = 7 дней (схема знает до дней); месяцы/годы схемой не выражаются — ANY_DUR без DUR_END = нераспознанный срок -> долг
 const dur = (v, u) => (/^w/i.test(u) ? { value: +v * 7, unit: "days" } : { value: +v, unit: UNIT[u[0].toLowerCase()] });
 const DUR_END = /\(\s*(\d+)\s*(round|minute|hour|day|week)s?\s*\)\s*[.,;]?\s*$/i;
+// случайный срок в конце стадии: «([[/gmr 1d4 #x]]{1d4 hours})», «([[/r 1d4]] minutes)», «(1d4 hours)»; неделя кубиком не выражается (схема — до дней)
+const DICE_F = String.raw`(\d+d\d+(?:\s*[+-]\s*\d+)?)`, DICE_U = String.raw`(round|minute|hour|day)s?`;
+const RAND_END = new RegExp(String.raw`\(\s*(?:\[\[\/(?:gmr|br|r)\s+${DICE_F}[^\]]*\]\](?:\{[^}]*?\b${DICE_U}\s*\}|\s*${DICE_U})|${DICE_F}\s*${DICE_U})\s*\)\s*[.,;]?\s*$`, "i");
+const randDur = (m) => ({ value: (m[1] ?? m[4]).replace(/\s+/g, ""), unit: UNIT[(m[2] ?? m[3] ?? m[5])[0].toLowerCase()] });
+const noDur = (s) => s.replace(DUR_END, "").replace(RAND_END, "");
 const ANY_DUR = /\([^()]*\b(?:round|minute|hour|day|week|month|year)s?\s*\)\s*[.,;]?\s*$/i;
 const STAGE_MARK = /<strong>\s*Stage\s+(\d+)\s*<\/strong>/gi;
 const SAVES = ["fortitude", "reflex", "will"];
@@ -36,8 +41,9 @@ export function parseStage(html, { condSlug, known }) {
   let t = stripHtml(html), ref = null, bad = false, lost = false;   // lost — разметка урона/бонуса разобрана не целиком: структура потеряна, а не только остаток
   const whole = t;
   const setPers = (p) => { if (out.persistent) bad = lost = true; else out.persistent = p; };   // второй продолжительный урон — не теряем молча
-  const d = DUR_END.exec(t), badDur = !d && (ANY_DUR.test(t) || /\(\s*\d+\s*(?:month|year)s?\s*\)/i.test(t));
+  const d = DUR_END.exec(t), rd = !d && RAND_END.exec(t), badDur = !d && !rd && (ANY_DUR.test(t) || /\(\s*\d+\s*(?:month|year)s?\s*\)/i.test(t));
   if (d) { out.duration = dur(d[1], d[2]); t = t.replace(DUR_END, ""); }
+  else if (rd) { out.duration = randDur(rd); t = t.replace(RAND_END, ""); }
   if (/\bor\s+@Damage\[/i.test(t)) bad = true;   // «@Damage … or @Damage» — альтернатива, не сумма
   const asStage = /\bas\s+stage\s+(\d+)\b/i.exec(t);
   let conn = null, core = "";   // conn — связка после «as stage N»; core — свой текст стадии без ссылки на образец
@@ -107,11 +113,11 @@ export function parseStage(html, { condSlug, known }) {
   // остаток: связки и знаки не в счёт, любое слово — непонятая часть (сюжетное, «carrier with no ill effect», «dead»)
   t = t.replace(/\bcarrier(?:\s+with\s+no\s+(?:ill\s+)?effects?)?\b|\bno\s+(?:ill\s+)?effects?\b/gi, " ");
   const rest = t.replace(/\b(?:and|the|a|an|of|plus|but|also|with)\b|damage|[\s,.;:()—–-]/gi, "");
-  if (rest || bad) { out.text = clip(plainMarkup(whole.replace(DUR_END, "")), 600); bad = true; }
+  if (rest || bad) { out.text = clip(plainMarkup(noDur(whole)), 600); bad = true; }
   const rest0 = tidy(t);   // сырой остаток без связок по краям: текст стадии-копии
   const left = t.replace(/\b(?:and|the|a|an|of|plus|but|also|with)\b|damage/gi, " ").replace(/[\s,.;:()—–-]+/g, " ").trim();
   const untyped = [...out.damage, out.persistent].some((x) => x?.damageType === "untyped");   // в стадии недуга «untyped» — не тип урона, а потеря типа
-  return { stage: out, ref, conn, core, rest: left ? plainMarkup(rest0) : "", plain: plainMarkup(whole.replace(DUR_END, "")), unsure: bad, left, lost, random: RANDOM.test(whole), badDur, untyped, check: /@Check\[/.test(whole) };
+  return { stage: out, ref, conn, core, rest: left ? plainMarkup(rest0) : "", plain: plainMarkup(noDur(whole)), unsure: bad, left, lost, random: RANDOM.test(rd ? noDur(whole) : whole), badDur, untyped, check: /@Check\[/.test(whole) };
 }
 
 // долг: состояние остаётся после срока недуга (linger, примитива нет)
@@ -368,11 +374,11 @@ export function parseAffliction(html, { name, traits = [], kind = null, save = n
   // срок стадии: без него — срок соседа, если однозначен; «конечная» стадия без срока — только у болезни/проклятия без Maximum Duration
   if (infos.some((x) => x.badDur)) unsure.push("duration: unrecognized stage duration");
   const skip = (i) => infos[i].random || infos[i].badDur || (dead && i === lastIx);
-  const have = stages.filter((x, i) => x.duration && !skip(i)), missing = stages.map((x, i) => (x.duration || skip(i) ? -1 : i)).filter((i) => i >= 0);
+  const have = stages.filter((x, i) => x.duration && !isRandom(x.duration) && !skip(i)), missing = stages.map((x, i) => (x.duration || skip(i) ? -1 : i)).filter((i) => i >= 0);
   if (missing.length) {
     const uniq = [...new Map(have.map((x) => [`${x.duration.value}${x.duration.unit}`, x.duration])).values()];
     const endOk = !du && k !== "poison" && missing.length === 1 && missing[0] === stages.length - 1;
-    if (!have.length) unsure.push("duration: no stage has one");
+    if (!have.length && !stages.some((x) => x.duration)) unsure.push("duration: no stage has one");
     else if (!endOk) {
       if (uniq.length === 1) missing.forEach((i) => { stages[i].duration = structuredClone(uniq[0]); });
       else unsure.push(`duration: stage ${missing[0] + 1} has none, neighbours differ`);

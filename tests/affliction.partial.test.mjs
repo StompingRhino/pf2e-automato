@@ -133,7 +133,14 @@ test("сроки: неделя = 7 дней; месяцы/годы и нерас
   const w = P(mk(D(1).replace("(1 day)", "(1 week)"), D(2)));
   assert.deepEqual(w.def.stages[0].duration, { value: 7, unit: "days" });
   assert.deepEqual(P(SV + `<p><strong>Maximum Duration</strong> 2 weeks</p>` + stage(1, D(1)) + stage(2, D(2)), { traits: ["poison"] }).def.maxDuration, { value: 14, unit: "days" });
-  for (const t of ["(1 month)", "(1 year)", "(1d4 days)"]) assert.ok(P(mk(D(1), `${sick} ${t}`)).unsure.includes("duration: unrecognized stage duration"), t);
+  // случайный срок стадии — кубик в duration.value (бросается при входе на стадию); неделя кубиком не выражается
+  for (const [t, d] of [["(1d4 days)", { value: "1d4", unit: "days" }], ["([[/gmr 1d4+1 #m]]{1d4+1 minutes})", { value: "1d4+1", unit: "minutes" }], ["([[/gmr 1d6 #h]] hours)", { value: "1d6", unit: "hours" }], ["([[/r 1d4]]{1d4 hours}).", { value: "1d4", unit: "hours" }]]) {
+    const r = P(mk(D(1), `${sick} ${t}`));
+    assert.deepEqual(r.def.stages[1].duration, d, t);
+    assert.ok(!r.debt.includes("random duration") && !r.unsure.includes("duration: unrecognized stage duration"), t);
+  }
+  assert.ok(P(mk(D(1), `${sick} (1d4 weeks)`)).unsure.includes("duration: unrecognized stage duration"));
+  for (const t of ["(1 month)", "(1 year)"]) assert.ok(P(mk(D(1), `${sick} ${t}`)).unsure.includes("duration: unrecognized stage duration"), t);
   assert.ok(P(mk(D(1), `transform (1 year). Lore.`)).unsure.includes("duration: unrecognized stage duration"));
   assert.ok(P(SV + `<p><strong>Maximum Duration</strong> 1d4 days</p>` + stage(1, D(1)) + stage(2, D(2)), { traits: ["poison"] }).unsure.includes("duration: maximum duration not a plain number"));
 });

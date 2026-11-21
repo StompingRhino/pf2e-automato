@@ -29,7 +29,7 @@ export function checkAffliction(rule, html, item, refs, { partial = false } = {}
   marks.forEach((m, i) => {
     const t = stripHtml(html.slice(m.index + m[0].length, marks[i + 1]?.index ?? html.length).split(/<\/p>|<hr|<br|<\/li>/)[0]), s = def.stages[i];
     if (!s) return;
-    if (/@Damage\[|\d+d\d+\s+[a-z]+/i.test(t) && !s.damage.length && !s.persistent) bad.push(`stage ${i + 1}: damage lost`);
+    if (/@Damage\[|\d+d\d+\s+(?!(?:rounds?|minutes?|hours?|days?)\b)[a-z]+/i.test(t) && !s.damage.length && !s.persistent) bad.push(`stage ${i + 1}: damage lost`);
     if (/@UUID\[Compendium\.pf2e\.conditionitems/.test(t) && !s.conditions.length) bad.push(`stage ${i + 1}: condition lost`);
     // второй барьер: каждое состояние из ссылок стадии — в разобранной, с тем же значением (значение у ссылки — число в метке или после неё у valued)
     for (const [, id, label = "", after] of t.matchAll(/@UUID\[[^\]]*\.conditionitems\.Item\.(\w+)\](?:\{([^}]*)\})?(?:\s+(\d+)\b(?!\s*(?:round|minute|hour|day|week)))?/g)) {

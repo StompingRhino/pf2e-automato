@@ -9,7 +9,7 @@ import { card } from "./card.mjs";
 import { esc, combatOf, worldActors, effectSource } from "./builtin/lib.mjs";
 import { rulesOfMods, inlineSlug } from "./inline-effect.mjs";
 import * as rules from "./rules.mjs";
-import { slugOfDef, carrierKey, stageKey, linkedPrefix, UNLINKED, startMeta, reexpose, advance, stageDelta, intervalOf, dueOf, afflictionChallenge, stagesText } from "./affliction.mjs";
+import { slugOfDef, carrierKey, stageKey, linkedPrefix, UNLINKED, startMeta, reexpose, advance, stageDelta, intervalOf, enterInterval, isRandom, dueOf, afflictionChallenge, stagesText } from "./affliction.mjs";
 
 const DIRECT = { [MOD]: { direct: true } };   // свои update: хук updateItem их пропускает (стадию применили сами)
 const FOREVER = { value: -1, unit: "unlimited", expiry: null, of: "target" };
@@ -34,6 +34,13 @@ const gmIds = () => ChatMessage.getWhisperRecipients("GM").map((u) => u.id);
 
 function say(def, actor, text, extra = "", whisper = null) {
   return ChatMessage.create({ ...(whisper && { whisper }), content: card(`${text}${extra ? `<br>${extra}` : ""}`, "", { title: esc(def.name), icon: "fa-biohazard" }), speaker: { alias: def.name } });
+}
+
+/** Интервал стадии при входе на неё: случайный срок (def.stages[].duration.value — кубик) бросается здесь, итог шёпотом ГМу (как `gmr` текста). */
+async function enter(def, actor, stage, name = def.name) {
+  const { sec, rolled } = await enterInterval(def, stage, async (f) => (await new Roll(f).evaluate()).total);
+  if (rolled) await say(def, actor, L("affliction.durRolled", { item: esc(name), target: esc(actor.name), n: stage, formula: rolled.formula, total: rolled.total, unit: L(`affliction.unit.${rolled.unit}`) }), "", gmIds());
+  return { sec, ...(rolled && { rolled }) };
 }
 
 /** Имя недуга в строках: исходный предмет, иначе носитель (def.name — английский снимок). */
@@ -177,7 +184,7 @@ export async function afflictionStep(actor, step, c) {
     if (have && metaOf(have).keys.includes(c.meta.key)) return { op: "skipped" };
     if (!have) {
       if (immuneToTraits(actor.attributes?.immunities, [...c.traits, def.kind, ...(def.traits ?? [])])) { warn("apply.immune", { name: actor.name }); return { op: "skipped" }; }
-      const m = startMeta(def, stage, { dc, now: now(), by: c.selfActor?.uuid ?? null, origin: c.originItem?.uuid ?? null, key: c.meta.key });
+      const m = startMeta(def, stage, { dc, now: now(), by: c.selfActor?.uuid ?? null, origin: c.originItem?.uuid ?? null, key: c.meta.key, iv: (await enter(def, actor, stage, c.originItem?.name)).sec });
       const created = (await actor.createEmbeddedDocuments("Item", [carrierSource(actor, def, stage, m, c)]))[0];
       return created ? { op: "created", item: created, stage } : { op: "skipped" };   // pf2e мог выкинуть документ
     }
@@ -203,9 +210,9 @@ async function applyDelta(actor, spec, c) {
     if (!m || m.keys.includes(meta.key) || degree == null) return { op: "skipped" };
     const cur = item.system.badge.value, { delta, streak } = stageDelta(degree, m.def.virulent, m.streak), nx = advance(cur, delta, m.def, m.locked);
     if (nx.cleared) return { op: "afflCleared", item, data: (({ _id, ...d }) => d)(item.toObject()) };
-    const iv = intervalOf(m.def, nx.stage);
+    const { sec: iv, rolled } = await enter(m.def, actor, nx.stage, nameOf(item, m));   // название с листа, не английский снимок def
     const prev = { stage: cur, aff: foundry.utils.deepClone(m) };
-    await item.update({ "system.badge.value": nx.stage, [flagPath("meta", "affliction")]: { streak, pending: null, keys: [...m.keys, meta.key], nextAt: iv == null ? null : now() + iv } }, DIRECT);
+    await item.update({ "system.badge.value": nx.stage, [flagPath("meta", "affliction")]: { streak, pending: null, keys: [...m.keys, meta.key], nextAt: iv == null ? null : now() + iv, ...(rolled && { iv }) } }, DIRECT);
     return { op: "afflicted", item, prev, apply: nx.stage !== cur || nx.repeated, locked: nx.locked };
   });
   if (r.locked) await say(metaOf(r.item).def, actor, L("affliction.stageLocked", { item: esc(nameOf(r.item, metaOf(r.item))), target: esc(actor.name) }));
@@ -249,7 +256,8 @@ async function rollCard(item, m, evId) {
   if (fired.has(key) || pendingAlive(m) || modeOf("challenge") === "off" || !tokenOf(actor)) return;
   fired.add(key);
   const [{ hostChallenge }, { buildSnapshot }] = await Promise.all([import("./events.mjs"), import("./use.mjs")]);   // лениво: events/use тянут zone и пол-модуля
-  const stage = item.system.badge.value, iv = intervalOf(m.def, stage);
+  // случайный срок: nextAt уже брошен при входе; здесь интервал нужен лишь как временная отметка до сдвига карточкой (ponytail: стадия, куда вошли повторным ядом/кликом ГМа, — час)
+  const stage = item.system.badge.value, d = m.def.stages[stage - 1]?.duration, iv = isRandom(d) ? m.iv ?? 3600 : intervalOf(m.def, stage);
   if (iv == null) return;
   // карточка: СЛ и степени — из снимка; автор мог пропасть (owner null, как у повтора спасброска)
   const [owner, origin] = [await safeDoc(m.by), await safeDoc(m.origin)], src = origin ? rules.sourceOf(null, origin) : null;

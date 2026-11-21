@@ -311,15 +311,17 @@ export const AFFLICTION_KINDS = ["poison", "disease", "curse"];
 export const AFFLICTION_SAVES = ["fortitude", "reflex", "will"];
 export const MAX_STAGES = 12;
 const HOLD_MODES = ["keep", "present"];   // keep — не снимать и не снижать ниже значения стадии; present — не снимать, снижать до 1
-function vAfflDur(d, path, err) {
-  if (!isObj(d) || !(isInt(d.value) && d.value >= 1) || !APPLY_UNITS.includes(d.unit)) { err.push(E("afflict.dur", path)); return null; }
-  return { value: d.value, unit: d.unit };
+const STAGE_DICE = /^\d+d\d+(?:[+-]\d+)?$/i;   // случайный срок стадии: «1d4», «1d4+1»; бросается при входе на стадию
+function vAfflDur(d, path, err, dice = false) {
+  const rnd = dice && isObj(d) && typeof d.value === "string" && STAGE_DICE.test(d.value.replace(/\s+/g, ""));
+  if (!isObj(d) || !(rnd || (isInt(d.value) && d.value >= 1)) || !APPLY_UNITS.includes(d.unit)) { err.push(E("afflict.dur", path)); return null; }
+  return { value: rnd ? d.value.replace(/\s+/g, "") : d.value, unit: d.unit };
 }
 function vAfflStage(s, path, err) {
   const bad = (k) => { err.push(E(k, path)); return null; };
   if (!isObj(s) || Object.keys(s).some((k) => !["duration", "damage", "persistent", "conditions", "mods", "text"].includes(k))) return bad("afflict.stage");
   const out = { duration: null, damage: [], persistent: null, conditions: [], mods: null, text: "" };
-  if (s.duration != null && !(out.duration = vAfflDur(s.duration, `${path}.duration`, err))) return null;
+  if (s.duration != null && !(out.duration = vAfflDur(s.duration, `${path}.duration`, err, true))) return null;
   if (s.damage != null) {
     if (!Array.isArray(s.damage) || s.damage.length > 4 || !s.damage.every((g) => isObj(g) && isDice(g.formula) && !isZeroFormula(g.formula) && DAMAGE_TYPES.includes(g.damageType))) return bad("afflict.damage");
     out.damage = s.damage.map((g) => ({ formula: g.formula.trim().replace(/\s+/g, ""), damageType: g.damageType }));

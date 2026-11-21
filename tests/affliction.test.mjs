@@ -832,3 +832,38 @@ test("конечная стадия (смерть): без срока и без 
   assert.equal(created.length, before);
   assert.equal(carriers(v).length, 1);
 });
+
+test("случайный срок стадии: кубик бросается при входе (наложение и сдвиг), итог — шёпотом ГМу, nextAt от брошенного", async () => {
+  globalThis.Roll = class { constructor(f) { this.f = f; } async evaluate() { this.total = 3; return this; } };
+  ChatMessage.getWhisperRecipients = () => [{ id: "gm" }];
+  const rnd = { value: "1d4", unit: "hours" };
+  assert.equal(A.secondsOf(rnd), null);
+  assert.deepEqual(await A.enterInterval(DEF({ stages: [stg({ duration: rnd })] }), 1, async () => 3), { sec: 3 * 3600, rolled: { formula: "1d4", total: 3, unit: "hours" } });
+  assert.deepEqual(await A.enterInterval(DEF(), 1, async () => assert.fail("фиксированный срок не бросается")), { sec: 6, rolled: null });
+  // валидатор: кубик только у срока стадии; maxDuration кубиком — ошибка; «1d4+1» нормализуется
+  const mk = (d, max) => validate(chRule(DEF({ ...(max && { maxDuration: max }), stages: [stg(), stg({ duration: d })] })));
+  assert.ok(mk({ value: "1d4 + 1", unit: "minutes" }).ok);
+  assert.deepEqual(mk({ value: "1d4 + 1", unit: "minutes" }).rule.onUse.challenge.byDegree.failure[0].affliction.def.stages[1].duration, { value: "1d4+1", unit: "minutes" });
+  for (const bad of [{ value: "abc", unit: "hours" }, { value: "4", unit: "hours" }, { value: "1d4", unit: "weeks" }]) assert.ok(!mk(bad).ok, JSON.stringify(bad));
+  assert.ok(!mk(rnd, rnd).ok);
+
+  const def = DEF({ maxDuration: null, stages: [stg(), stg({ duration: rnd }), stg({ duration: null, damage: [], conditions: [] })] });
+  const v = setup();
+  await expose(v, startStep(def, 2));   // сразу на случайной стадии
+  const meta = () => carrierOf(v).flags[MOD].meta.affliction;
+  assert.deepEqual([meta().nextAt, meta().iv], [1000 + 3 * 3600, 3 * 3600]);
+  const whispers = () => created.filter((m) => m.whisper?.length && String(m.content).includes("affliction.durRolled"));
+  assert.equal(whispers().length, 1);
+  // конец интервала: карточка (временная отметка nextAt — iv), успех -> стадия 1 с фиксированным сроком, iv не пишется заново
+  now = 1000 + 3 * 3600; await run.tick(v, "r1");
+  assert.ok(meta().pending, "карточка выложена и на случайной стадии");
+  const r = await resolveCard(v, 2);
+  assert.equal(carrierOf(v).system.badge.value, 1);
+  assert.equal(meta().nextAt, now + 6);
+  assert.equal(whispers().length, 1, "фиксированная стадия не бросает");
+  // провал -> снова случайная стадия: новый бросок и шёпот
+  const f = await resolveCard(v, 1, "R2");
+  assert.equal(carrierOf(v).system.badge.value, 2);
+  assert.deepEqual([meta().nextAt, meta().iv], [now + 3 * 3600, 3 * 3600]);
+  assert.equal(whispers().length, 2);
+});

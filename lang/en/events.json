@@ -316,7 +316,9 @@
       "onset": "Onset",
       "cleared": "\"{item}\": {target} is rid of the affliction.",
       "stageLocked": "\"{item}\": {target} — not treated yet, the stage does not drop below 1. After treatment, remove the carrier by clicking its badge.",
-      "ended": "\"{item}\": the maximum duration on {target} has run out — the affliction ends."
+      "ended": "\"{item}\": the maximum duration on {target} has run out — the affliction ends.",
+      "durRolled": "\"{item}\": {target} — stage {n} duration: {formula} = {total} {unit}.",
+      "unit": { "rounds": "rounds", "minutes": "min", "hours": "hr", "days": "days" }
     },
     "apply": {
       "afflictionNoDC": "\"{name}\": the affliction DC is unknown — not applied.",

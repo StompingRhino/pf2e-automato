@@ -4,8 +4,11 @@
 import { sluggify } from "./util.mjs";
 
 export const UNIT_S = { rounds: 6, minutes: 60, hours: 3600, days: 86400 };   // раунд = CONFIG.time.roundTime (pf2e: 6 с)
+/** Случайный срок стадии: value — кубик «1d4» (как у срока условия), бросается при входе на стадию; без броска срока в секундах нет. */
+export const isRandom = (d) => typeof d?.value === "string";
 export const secondsOf = (d) => {
-  const s = d?.unit === "rounds" ? globalThis.CONFIG?.time?.roundTime ?? UNIT_S.rounds : UNIT_S[d?.unit];
+  if (isRandom(d)) return null;
+  const s =d?.unit === "rounds" ? globalThis.CONFIG?.time?.roundTime ?? UNIT_S.rounds : UNIT_S[d?.unit];
   return s ? d.value * s : null;
 };
 /** Состояния, которые pf2e не привязывает к недугу (pf2e.mjs zl): поднимаем по max без снятия при смене стадии, чужое не трогаем. */
@@ -43,15 +46,27 @@ export function advance(stage, delta, def, locked = false) {
 /** Интервал стадии в секундах; у конечной стадии (смерть, «as stage…» без срока) его нет — бросков больше не будет. */
 export const intervalOf = (def, stage) => secondsOf(def.stages[stage - 1]?.duration);
 
-/** meta.affliction нового носителя. Onset не стадия 0: стадия записана сразу, но её эффекты ждут onsetEnds. СЛ — числом (источник может пропасть). */
-export function startMeta(def, stage, { dc, now, by = null, origin = null, key = null }) {
-  const max = secondsOf(def.maxDuration), onset = secondsOf(def.onset), iv = intervalOf(def, stage);
+/**
+ * Интервал стадии при входе на неё: у случайного срока кубик бросает roll(formula) -> число.
+ * -> { sec, rolled: { formula, total, unit } | null }; rolled — что показать ГМу.
+ */
+export async function enterInterval(def, stage, roll) {
+  const d = def.stages[stage - 1]?.duration;
+  if (!isRandom(d)) return { sec: intervalOf(def, stage), rolled: null };
+  const total = Math.max(1, await roll(d.value));   // «1d4-1» и т. п.: нулевой срок дал бы немедленный спасбросок
+  return { sec: secondsOf({ value: total, unit: d.unit }), rolled: { formula: d.value, total, unit: d.unit } };
+}
+
+/** meta.affliction нового носителя. Onset не стадия 0: стадия записана сразу, но её эффекты ждут onsetEnds. СЛ — числом (источник может пропасть). iv — уже брошенный срок стадии (случайный). */
+export function startMeta(def, stage, { dc, now, by = null, origin = null, key = null, iv = intervalOf(def, stage) }) {
+  const max = secondsOf(def.maxDuration), onset = secondsOf(def.onset);
   return {
     slug: slugOfDef(def), def, dc, statistic: def.save.statistic,
     traits: [...new Set([def.kind, ...(def.traits ?? [])])],
     streak: 0, locked: !!def.stageLock, applied: null, pending: null, keys: key ? [key] : [],
     endsAt: max == null ? null : now + max, onsetEnds: onset == null ? null : now + onset,
     nextAt: iv == null ? null : (onset == null ? now : now + onset) + iv,
+    ...(iv != null && isRandom(def.stages[stage - 1]?.duration) && { iv }),
     by, origin
   };
 }
