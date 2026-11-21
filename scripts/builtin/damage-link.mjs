@@ -7,6 +7,7 @@
 import { L, MOD } from "../util.mjs";
 import { castOrigin, effectSource, addEffect, esc, whisper, paHas, messageTargets, itemSlug, combatOf } from "./lib.mjs";
 import { kindOf } from "./spellshape.mjs";
+import { subtractDamage } from "./damage-math.mjs";
 
 /** Таблица группы: slug заклинания -> эффект и способ переноса. cap: [ранг от, значение], по убыванию. */
 export const LINKS = {
@@ -112,7 +113,7 @@ export function intercept(actor, opts) {
   const sum = out.reduce((s, r) => s + r.amount, 0);
   rows.push(...out.filter((r) => r.amount > 0).map((r) => ({ id: live[r.i].effect.id, caster: live[r.i].caster, amount: r.amount, drop: false, once: !!live[r.i].def.once, half: live[r.i].def.mode === "half" })));
   if (!rows.length) return null;
-  return { damage: sum > 0 ? (typeof d === "number" ? d - sum : d.alter(1, -sum)) : d, rows, round };
+  return { damage: subtractDamage(d, sum), rows, round };
 }
 
 /** Активный ведущий, после применения урона цели: урон заклинателю, метка раунда, шёпот, конец связи. */

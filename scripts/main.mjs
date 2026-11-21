@@ -19,6 +19,7 @@ import * as actions from "./actions.mjs";
 import * as workshop from "./workshop/app.mjs";
 import * as leader from "./leader.mjs";
 import * as shieldBlock from "./builtin/shield-block.mjs";
+import * as guard from "./builtin/guard.mjs";
 import * as basicDamage from "./builtin/basic-damage.mjs";
 import * as damaged from "./builtin/damaged.mjs";
 import * as failed from "./builtin/failed.mjs";
@@ -119,6 +120,7 @@ export const HANDLERS = {
   basicDamage: gm("basicDamage", (dmgId, redo) => basicDamage.settle(dmgId, { manual: true, redo: !!redo })),
   markDamageApplied: gm("markDamageApplied", (messageId, tokenUuid) => shieldBlock.markApplied(messageId, tokenUuid), "owner", async (user, _m, tokenUuid) => ({ owns: ownsActor((await fromUuid(tokenUuid))?.actor, user) })),
   settleLink: gm("settleLink", (targetUuid, rows, round) => shieldBlock.settleLink(targetUuid, rows, round), "owner", async (user, targetUuid) => ({ owns: ownsActor(await fromUuid(targetUuid), user) })),
+  guardTake: gm("guardTake", (tokenUuid, total) => guard.take(tokenUuid, total), "owner", async (user, tokenUuid) => ({ owns: ownsActor((await fromUuid(tokenUuid))?.actor, user) })),   // Древо-защитник: урон Удара по союзнику
   dropSpellShield: gm("dropSpellShield", (actorUuid, effectId, layers) => shieldBlock.dropSpellShield(actorUuid, effectId, layers), "owner", async (user, actorUuid) => ({ owns: ownsActor(await fromUuid(actorUuid), user) })),
   applyRetch: gm("applyRetch", (actorUuid, degree) => turnConditions.applyRetch(actorUuid, degree), "owner", async (user, actorUuid) => ({ owns: ownsActor(await fromUuid(actorUuid), user) })),
   applyEscape: gm("applyEscape", (actorUuid, items, degree) => escape.applyEscape(actorUuid, items, degree), "owner", async (user, actorUuid) => ({ owns: ownsActor(await fromUuid(actorUuid), user) })),

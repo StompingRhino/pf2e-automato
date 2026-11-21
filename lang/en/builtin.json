@@ -148,6 +148,9 @@
         "guardianLabel": "Devoted Guardian",
         "guardianText": "<b>{name}</b> shields you: a circumstance bonus to AC while the shield is raised."
       },
+      "guard": {
+        "card": "<p>{tree} takes {n} damage instead of {name}; {left} HP left.</p>"
+      },
       "link": {
         "lifeLink": "Life Link with {name}: the first damage each round is reduced, the caster loses HP.",
         "shareLife": "Share Life with {name}: the target takes half damage, the caster takes the rest.",

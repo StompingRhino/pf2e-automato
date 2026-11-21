@@ -36,6 +36,7 @@ import * as huntPrey from "./hunt-prey.mjs";
 import * as oscillatingWave from "./oscillating-wave.mjs";
 import * as shieldWard from "./shield-ward.mjs";
 import * as damageLink from "./damage-link.mjs";
+import * as guard from "./guard.mjs";
 import * as apparitionSense from "./apparition-sense.mjs";
 import * as preyShare from "./prey-share.mjs";
 import * as smite from "./smite.mjs";
@@ -134,6 +135,7 @@ export function initBuiltinHooks() {
   Hooks.on("renderChatMessageHTML", shieldBlock.bindBlock);
   Hooks.on("renderChatMessageHTML", shieldBlock.trackApplyClicks);
   Hooks.on("createChatMessage", shieldBlock.onDamageTaken);
+  Hooks.once("ready", guard.install);   // Древо-защитник: подписчик раньше shield-block (там Блок и связь жизни), после damaged (first)
   Hooks.once("ready", shieldBlock.wrapApplyDamage);
   Hooks.once("ready", damaged.wrapApplyDamage);   // удержание урона до решения о реакции; первый в цепочке подписчиков
   Hooks.on("renderChatMessageHTML", damaged.bind);

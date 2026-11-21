@@ -55,7 +55,7 @@ function rowOf(a) {
 function rowCore(a) {
   const keep = keepOf(a), d = a.duration;
   const dur = d ? { durValue: d.value, durUnit: d.unit, durExpiry: d.expiry ?? "", durOf: d.of ?? "origin" } : DUR_BLANK;
-  if (a.condition) return { to: a.to, kind: "condition", text: a.condition.slug, value: a.condition.value ?? "", policy: a.condition.policy ?? "max", keep, ...dur, ...VIS_BLANK, ...PERS_BLANK };
+  if (a.condition) return { to: a.to, kind: "condition", text: a.condition.slug, value: a.condition.value ?? "", policy: a.condition.policy ?? "max", ...(a.condition.standing && { standing: true }), keep, ...dur, ...VIS_BLANK, ...PERS_BLANK };
   // срок эффекта (переопределение): значение — число или кубик, единица и конец хода; «чей ход» у эффекта не бывает
   // inline-эффект (mods): кубики — JSON в text (как у choose), «чей ход» у него есть
   if (a.effect) return { to: a.to, kind: "effect", text: a.effect.mods ? JSON.stringify(a.effect.mods) : a.effect.uuid, value: "", policy: "max", keep, ...(d ? { ...dur, durOf: d.of ?? "origin" } : DUR_BLANK), ...VIS_BLANK, ...PERS_BLANK };
@@ -139,7 +139,7 @@ function applyCore(r) {
   const value = num(r.value);
   const dt = String(r.durValue ?? "").trim(), dv = /^\d+d\d+$/i.test(dt) ? dt.toLowerCase() : num(dt);
   return {
-    to, condition: { slug: text, ...(value !== undefined && { value }), policy: ["add", "reduce"].includes(r.policy) ? r.policy : "max" },
+    to, condition: { slug: text, ...(value !== undefined && { value }), policy: ["add", "reduce"].includes(r.policy) ? r.policy : "max", ...(r.standing === true && text === "unconscious" && { standing: true }) },
     ...(dv !== undefined && { duration: { value: dv, unit: r.durUnit, expiry: r.durExpiry || null, of: r.durOf === "target" ? "target" : "origin" } })
   };
 }
@@ -218,7 +218,7 @@ function rkRule(c, withSpell) {
 const usesSpell = (c) => c.kind === "spell" || c.kind === "both";
 const usesSteps = (c) => c.kind === "steps" || c.kind === "both";
 /** Шаги активации (onUse записи/варианта) <-> модель use: выборка из формы основного onUse; зона едет как есть (UI у неё нет). */
-const USE_KEYS = ["targets", "excludeSelf", "pulse", "range", "zone", "ch", "ck", "apply"];
+const USE_KEYS = ["targets", "excludeSelf", "pulse", "summon", "range", "zone", "ch", "ck", "apply"];
 export const blankUse = () => ({ ...useForm(null), targets: "selected" });
 function useForm(u) {
   const f = ruleToForm(u && typeof u === "object" ? { v: 1, onUse: u } : null);
@@ -248,7 +248,7 @@ function castRule(c) {
 }
 
 /** Форма вкладки листа + то, что на вкладке не правится и едет как было (иначе сохранение потеряет: флаг перекрывает каталог). f — ruleToForm исходного правила. */
-export const carryUneditable = (form, f) => ({ ...form, ev: f.ev, cast: f.cast, pulse: f.pulse, range: f.range, dm: form.dm && { ...form.dm, notify: f.dm.notify }, fl: form.fl && { ...form.fl, notify: f.fl.notify } });
+export const carryUneditable = (form, f) => ({ ...form, ev: f.ev, cast: f.cast, pulse: f.pulse, summon: f.summon, range: f.range, dm: form.dm && { ...form.dm, notify: f.dm.notify }, fl: form.fl && { ...form.fl, notify: f.fl.notify } });
 
 /** notify реакции: массив правила <-> флажки {owner, gm}; пустой выбор уходит валидатору (react.notify). */
 const notifyForm = (n = ["owner", "gm"]) => ({ owner: n.includes("owner"), gm: n.includes("gm") });
@@ -296,7 +296,7 @@ export function ruleToForm(rule) {
     kind: rule?.onDamaged ? "onDamaged" : rule?.onFailed ? "onFailed" : u ? "onUse" : r ? "onAttacked" : rule?.onEvent?.length ? "onEvent" : rule?.activate?.length ? "cast" : "none",
     ev: (rule?.onEvent ?? []).map(evForm), cast: (rule?.activate ?? []).map(castForm),
     dm: dmForm(rule?.onDamaged), fl: flForm(rule?.onFailed),
-    useOn: !!u, targets: u?.targets ?? "self", excludeSelf: tri(u?.excludeSelf), pulse: u?.pulse ?? "", range: u?.range ?? null,   // range — дальность (оверлей/правило), в форме не редактируется, правка правила её не теряет
+    useOn: !!u, targets: u?.targets ?? "self", excludeSelf: tri(u?.excludeSelf), pulse: u?.pulse ?? "", summon: u?.summon ?? null, range: u?.range ?? null,   // summon (призыв-объект) едет как есть; range — дальность (оверлей/правило), в форме не редактируется, правка правила её не теряет
     zone: { on: !!z, cond: z?.condition?.slug ?? "", condValue: z?.condition?.value ?? "", effect: z?.effect?.uuid ?? "", seconds: z?.duration?.seconds ?? "", rounds: z?.duration?.rounds ?? "", until: z?.duration?.until ?? "", sustainMax: z?.duration?.sustainMax ?? "", noFollow: z?.follow === false, enterBy: z?.enterBy ?? "end", gone: z?.onCarrierGone ?? "close", trig: (z?.triggers ?? []).map(trgForm) },
     ch: {
       on: !!c, statistic: c?.statistic ?? "reflex",
@@ -329,6 +329,7 @@ export function formToRule(f) {
     const u = { targets: f.targets, excludeSelf: untri(f.excludeSelf), zone: null, challenge: null, apply: (f.apply ?? []).map(applyOf).filter(Boolean) };
     if (f.pulse && f.targets !== "self") u.pulse = f.pulse;
     if (f.range) u.range = f.range;
+    if (f.summon) u.summon = f.summon;
     const z = f.zone ?? {};
     if (f.targets === "area" && z.on) {
       const cv = num(z.condValue), s = num(z.seconds), r = num(z.rounds), sm = num(z.sustainMax), until = z.until?.trim?.() || undefined;   // until/sustainMax — проброс (срок по ходу автора, zone.mjs), в форме не редактируются

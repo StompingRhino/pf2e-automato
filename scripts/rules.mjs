@@ -174,7 +174,9 @@ function vApply(a, path, defTo, err, basicOk = false, castOk = false) {
       // reduce — снизить действующее значение на value (по умолчанию 1), на нуле состояние снимается; нет состояния — пропуск (Аура отваги)
       if (c.policy != null && !["max", "add", "reduce"].includes(c.policy)) err.push(E("cond.policy", `${path}.condition.policy`));
       else if (c.policy === "reduce" && a.duration != null) err.push(E("cond.reduceDur", `${path}.condition.policy`));
-      out.condition = { slug: c.slug, ...(c.value != null && { value: c.value }), policy: c.policy ?? "max" };
+      // standing — без падения ничком: Без сознания не выдаёт Лежащего (Сон ≤3 ранга); только для unconscious
+      if (c.standing != null && (c.standing !== true || c.slug !== "unconscious")) err.push(E("cond.standing", `${path}.condition.standing`));
+      out.condition = { slug: c.slug, ...(c.value != null && { value: c.value }), policy: c.policy ?? "max", ...(c.standing === true && { standing: true }) };
     }
   }
   // duration: у состояния — срок обёртки-эффекта (of: чей ход считает); у эффекта — переопределение срока созданного эффекта (value — число или кубик «1d4», бросается при создании)
@@ -573,6 +575,23 @@ function vCheck(c, path, err) {
   return out;
 }
 
+/** Призыв-объект (Древо-защитник): ПЗ = base + perRank × (ранг − fromRank); null — форма неверна. */
+function vSummonObject(o) {
+  const nn = (x) => isInt(x) && x >= 0, hp = o?.hp, g = o?.guard, a = o?.art, d = o?.duration;
+  if (!isObj(o) || !isObj(hp) || !nn(hp.base) || !nn(hp.perRank) || !(isInt(hp.fromRank) && hp.fromRank >= 1) || !nn(o.ac)) return null;
+  if (!isObj(g) || g.on !== "strike" || !(isInt(g.adjacent) && g.adjacent >= 1) || g.side !== "allies") return null;
+  if (!isObj(a) || a.kind !== "assets" || !Array.isArray(a.entries) || !a.entries.length
+    || !a.entries.every((e) => isObj(e) && isStr(e.id) && (e.rare == null || (isNum(e.rare) && e.rare > 0 && e.rare < 1)))) return null;
+  if (o.range != null && !(isNum(o.range) && o.range > 0)) return null;
+  if (d != null && !(isObj(d) && isInt(d.value) && d.value >= 1 && ["rounds", "minutes", "hours", "days"].includes(d.unit))) return null;
+  if ((o.single != null && typeof o.single !== "boolean") || (o.rankFrom != null && o.rankFrom !== "halfLevel")) return null;
+  return {
+    hp: { base: hp.base, perRank: hp.perRank, fromRank: hp.fromRank }, ac: o.ac, guard: { on: "strike", adjacent: g.adjacent, side: "allies" },
+    art: { kind: "assets", entries: a.entries.map((e) => ({ id: e.id, ...(e.rare != null && { rare: e.rare }) })) },
+    ...(o.range != null && { range: o.range }), ...(d && { duration: { value: d.value, unit: d.unit } }), single: o.single === true, ...(o.rankFrom && { rankFrom: o.rankFrom })
+  };
+}
+
 function vOnUse(u, err) {
   if (!isObj(u)) { err.push(E("notObj", "onUse")); return null; }
   const out = { targets: u.targets };
@@ -584,9 +603,13 @@ function vOnUse(u, err) {
     if (!isObj(r) || !(isNum(r.ft) && r.ft > 0) || (r.area != null && typeof r.area !== "boolean") || (g != null && !(isObj(g) && isNum(g.add) && g.add > 0 && isNum(g.every) && g.every > 0))) err.push(E("use.range", "onUse.range"));
     else out.range = { ft: r.ft, ...(r.area && { area: true }), ...(g && { grow: { add: g.add, every: g.every } }) };
   }
-  if (u.summon != null) {   // призыв существа (черта summon): признак ИЛИ конкретное существо; levels — {ранг: уровень}; пишет оверлей rules/summons.json или автор правила
-    const m = u.summon, t = m?.traits, lv = m?.levels;
-    if (!isObj(m) || (t != null && !(Array.isArray(t) && t.length && t.every((x) => typeof x === "string" && x))) || (m.uuid != null && !(typeof m.uuid === "string" && m.uuid.startsWith("Compendium."))) || (t == null) === (m.uuid == null)
+  if (u.summon != null) {   // призыв существа (черта summon): признак ИЛИ конкретное существо ИЛИ объект (Древо-защитник); levels — {ранг: уровень}; пишет оверлей rules/summons.json или автор правила
+    const m = u.summon, t = m?.traits, lv = m?.levels, o = m?.object;
+    if (isObj(m) && o != null) {
+      const ob = vSummonObject(o);
+      if (!ob || t != null || m.uuid != null || lv != null || m.count != null) err.push(E("use.summonObject", "onUse.summon.object"));
+      else out.summon = { object: ob };
+    } else if (!isObj(m) || (t != null && !(Array.isArray(t) && t.length && t.every((x) => typeof x === "string" && x))) || (m.uuid != null && !(typeof m.uuid === "string" && m.uuid.startsWith("Compendium."))) || (t == null) === (m.uuid == null)
       || (lv != null && !(isObj(lv) && Object.keys(lv).length && Object.entries(lv).every(([k, v]) => isInt(Number(k)) && Number(k) >= 1 && isInt(v)))) || (m.count != null && !(isInt(m.count) && m.count >= 1 && m.count <= 4))) err.push(E("use.summon", "onUse.summon"));
     else out.summon = { ...(t && { traits: [...t] }), ...(m.uuid && { uuid: m.uuid }), ...(lv && { levels: { ...lv } }), ...(m.count != null && { count: m.count }) };
   }

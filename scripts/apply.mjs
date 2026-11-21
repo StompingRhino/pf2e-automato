@@ -85,6 +85,31 @@ const STUN_ROUNDS = { rounds: 1, minutes: 10, hours: 600, days: 14400 };
 /** Значение под «шок на срок»: 4 на каждый раунд срока (d.value — уже брошенное число); потолок 99. */
 const stunValue = (d) => Math.min(99, 4 * d.value * (STUN_ROUNDS[d.unit] ?? 1));
 
+/** Prone, выданный состоянием (его GrantItem), а не лежавший или поставленный вручную. */
+const PRONE_UUID = /\.j91X7x0XSomq8d60$/;
+export const grantedProneOf = (actor, grantorId) => actor.itemTypes.condition.find((c) => c.slug === "prone" && c.flags?.pf2e?.grantedBy?.id === grantorId);
+
+/** flag standing (Сон, ранги 1-3: «не падает»): без GrantItem Prone у состояния. Данные — до создания. */
+export function stripGrantedProne(data) {
+  if (Array.isArray(data.system?.rules)) data.system.rules = data.system.rules.filter((r) => !(r.key === "GrantItem" && PRONE_UUID.test(r.uuid ?? "")));
+}
+
+/** Путь со сроком: состояние выдаёт pf2e из обёртки, правил не поправить, поэтому Prone снимаем после выдачи (grantedBy сбрасываем: обычное удаление pf2e отменяет). Выдача может отстать от await: ждём до 1 с. */
+async function dropGrantedProne(actor, wrapper, had) {
+  for (let i = 0; i < 10; i++) {
+    const unc = actor.itemTypes.condition.find((c) => c.slug === "unconscious" && c.flags?.pf2e?.grantedBy?.id === wrapper.id);
+    const prone = unc && grantedProneOf(actor, unc.id);
+    if (prone && had.has(prone.id)) return;   // уже лежал: pf2e не создаёт дубль, а приписывает прежний Prone к Unconscious — не трогаем
+    if (prone) {
+      await prone.update(forcedDelete("flags.pf2e.grantedBy"));
+      await prone.delete();
+      return;
+    }
+    if (unc && i >= 3) return;   // Unconscious выдан, Prone нет (уже лежал: allowDuplicate:false) — нечего снимать
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 async function createTimed(actor, spec, meta, ctx, base) {
   const d = spec.duration, valued = !!base.system?.value?.isValued;
   const forStun = sluggify(spec.slug) === "stunned" && spec.value == null;   // шок на срок
@@ -101,7 +126,9 @@ async function createTimed(actor, spec, meta, ctx, base) {
   });
   withMeta(data, meta);
   if (forStun) data.flags[MOD].stunWrap = true;   // prolongable обёртку шока на срок не берёт
+  const had = new Set(actor.itemTypes.condition.filter((c) => c.slug === "prone").map((c) => c.id));
   const [item] = await actor.createEmbeddedDocuments("Item", [data]);
+  if (item && spec.standing) await dropGrantedProne(actor, item, had);
   return item ? { op: "created", item } : { op: "skipped" };   // pf2e выкинул документ (иммунитет к состоянию)
 }
 
@@ -161,6 +188,7 @@ export function applyCondition(actor, spec /* {slug,value,policy,duration?} */, 
     if (!base) throw new Error(`applyCondition: неизвестное состояние "${spec.slug}"`);
     const data = base.toObject();
     if (data.system.value?.isValued) data.system.value.value = spec.value ?? 1;
+    if (spec.standing) stripGrantedProne(data);
     withMeta(data, meta);
     const [item] = await actor.createEmbeddedDocuments("Item", [data]);
     return item ? { op: "created", item } : { op: "skipped" };   // pf2e выкинул документ (иммунитет к состоянию)

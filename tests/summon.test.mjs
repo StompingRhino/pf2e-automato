@@ -62,3 +62,70 @@ test("rangeCells: клетки в пределах дальности вокру
   assert.ok(!cells.some((c) => c.x === 10 && c.y === 10));
   assert.ok(rangeCells({ x: 10, y: 10, w: 1, h: 1 }, 30, 5).every((c) => Math.abs(c.x - 10) <= 6 && Math.abs(c.y - 10) <= 6));
 });
+
+import { objectHp, objectRank, treeVisibility, previousObjects, minionsOf } from "../scripts/summon.mjs";
+import { validateRule } from "../scripts/rules.mjs";
+
+test("объект: ПЗ = base + perRank за ранг сверх fromRank (ранг 1 → 10, 3 → 30)", () => {
+  const o = { hp: { base: 10, perRank: 10, fromRank: 1 } };
+  assert.equal(objectHp(o, 1), 10);
+  assert.equal(objectHp(o, 3), 30);
+  assert.equal(objectHp(o, 0), 10);
+});
+
+test("объект: ранг — по ceil(уровень/2) при rankFrom, иначе ранг сотворения", () => {
+  assert.equal(objectRank({ rankFrom: "halfLevel" }, { cast: 9, level: 5 }), 3);
+  assert.equal(objectRank({ rankFrom: "halfLevel" }, { level: 4 }), 2);
+  assert.equal(objectRank({}, { cast: 3, item: 1, level: 9 }), 3);
+  assert.equal(objectRank(undefined, { item: 2, level: 9 }), 2);
+  assert.equal(objectRank(undefined, { level: 5 }), 3);
+});
+
+test("павшее дерево: hp ≤ 0 скрывает, hp > 0 показывает, без перемен — null", () => {
+  assert.deepEqual(treeVisibility({ hp: 0, hidden: false }), { hidden: true, felled: true });
+  assert.deepEqual(treeVisibility({ hp: -3, hidden: false }), { hidden: true, felled: true });
+  assert.equal(treeVisibility({ hp: 0, hidden: true }), null);
+  assert.deepEqual(treeVisibility({ hp: 4, hidden: true }), { hidden: false, felled: false });
+  assert.equal(treeVisibility({ hp: 4, hidden: false }), null);
+  assert.equal(treeVisibility({ hp: undefined, hidden: true }), null);
+});
+
+test("single: прежние деревья того же автора и записи, но не новое и не чужие", () => {
+  const t = (uuid, by, src, kind = "object") => ({ uuid, flag: { kind, by, src } });
+  const list = [t("old", "A", "S"), t("new", "A", "S"), t("other", "B", "S"), t("src2", "A", "S2"), t("minion", "A", "S", "creature"), { uuid: "plain", flag: null }];
+  assert.deepEqual(previousObjects(list, { by: "A", src: "S", keep: "new" }), ["old"]);
+});
+
+test("minionsOf: объекты в лимит приспешников не входят", () => {
+  globalThis.game = { scenes: { contents: [{ tokens: { contents: [
+    { flags: { "pf2e-automato": { summoned: { by: "A", kind: "object" } } } },
+    { flags: { "pf2e-automato": { summoned: { by: "A" } } } }
+  ] } }] } };
+  assert.equal(minionsOf("A").length, 1);
+  delete globalThis.game;
+});
+
+test("валидатор: onUse.summon.object — форма, нормализация, взаимоисключение с traits", () => {
+  const object = { hp: { base: 10, perRank: 10, fromRank: 1 }, ac: 10, guard: { on: "strike", adjacent: 5, side: "allies" },
+    art: { kind: "assets", entries: [{ id: "a/B_6x6" }, { id: "a/C_6x6", rare: 0.05 }] }, range: 30, duration: { value: 1, unit: "minutes" }, single: true, rankFrom: "halfLevel" };
+  const mk = (summon) => validateRule({ v: 1, onUse: { targets: "self", apply: [], summon } });
+  const ok = mk({ object });
+  assert.ok(ok.ok, JSON.stringify(ok.errors));
+  assert.deepEqual(ok.rule.onUse.summon.object, object);
+  assert.equal(mk({ object: { ...object, single: undefined } }).rule.onUse.summon.object.single, false);
+  for (const bad of [{ object, traits: ["x"] }, { object, count: 2 }, { object: { ...object, ac: -1 } }, { object: { ...object, guard: { ...object.guard, on: "spell" } } },
+    { object: { ...object, art: { kind: "tokens", entries: object.art.entries } } }, { object: { ...object, art: { kind: "assets", entries: [] } } },
+    { object: { ...object, art: { kind: "assets", entries: [{ id: "x", rare: 2 }] } } }, { object: { ...object, duration: { value: 1, unit: "years" } } }, { object: { ...object, rankFrom: "x" } }])
+    assert.equal(mk(bad).ok, false, JSON.stringify(bad).slice(0, 80));
+  assert.ok(mk({ traits: ["plant"] }).ok);
+});
+
+test("валидатор: condition.standing — только true и только unconscious", () => {
+  const mk = (condition) => validateRule({ v: 1, onUse: { targets: "self", apply: [{ to: "self", condition }] } });
+  const ok = mk({ slug: "unconscious", standing: true });
+  assert.ok(ok.ok, JSON.stringify(ok.errors));
+  assert.equal(ok.rule.onUse.apply[0].condition.standing, true);
+  assert.equal(mk({ slug: "unconscious" }).rule.onUse.apply[0].condition.standing, undefined);
+  assert.equal(mk({ slug: "prone", standing: true }).ok, false);
+  assert.equal(mk({ slug: "unconscious", standing: false }).ok, false);
+});

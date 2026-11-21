@@ -10,6 +10,7 @@ import { esc, whisper, cardButton, combatOf, settleButtons } from "./lib.mjs";
 import { guardHints, wardShield, watchShieldDamage, damageHolderShield } from "./shield-ward.mjs";
 import * as channeling from "./channeling-block.mjs";
 import * as damageLink from "./damage-link.mjs";
+import * as guard from "./guard.mjs";
 import { subscribe, install, setClickSource } from "./apply-hook.mjs";
 
 export const settleLink = damageLink.settle;
@@ -85,6 +86,7 @@ export async function onMessage(message) {
   const authorTargets = (game.users.get(message.author?.id ?? message.author)?.targets ?? []).map((t) => t.document.uuid);
   for (const uuid of damageTargets(message, authorTargets)) {
     const token = await fromUuid(uuid), actor = token?.actor;
+    if (await guard.coversAll(message, token)) continue;   // Древо-защитник примет весь урон — Блок не нужен
     if (actor?.hitPoints?.value > 0 && !alreadyApplied(message, token.id)) await guardHints(message, token, { raisedShield, reactionAvailable, attack }).catch((e) => console.error(`${MOD} | shield-ward`, e));
     const shield = raisedShield(actor?.attributes?.shield);
     if (!attack || !shield || !(actor.hitPoints?.value > 0) || !reactionAvailable(actor) || alreadyApplied(message, token.id)) continue;

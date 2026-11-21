@@ -144,6 +144,45 @@ export async function findToken(names, { download = true, setting = "formTokens"
 /** Ключ записи каталога FA: у Nexus 0.6 полей filename/file_path нет — путь без расширения лежит в id («Creatures/Beast/Mammals/Ape_A1_…_01»). */
 export const catKey = (x) => String(x?.filename ?? x?.file_path ?? x?.id ?? "");
 
+/** Чистая: случайный элемент списка с весами: у `rare` вес — его шанс (0..1), у остальных (1 − сумма rare) поровну. rnd — [0,1). Пусто — null. */
+export function pickWeighted(list, rnd = Math.random) {
+  if (!list?.length) return null;
+  const plain = list.filter((e) => e.rare == null).length, rest = Math.max(0, 1 - list.reduce((s, e) => s + (e.rare ?? 0), 0));
+  const w = list.map((e) => e.rare ?? (plain ? rest / plain : 0)), total = w.reduce((a, b) => a + b, 0);
+  if (!(total > 0)) return list[Math.min(list.length - 1, Math.floor(rnd() * list.length))];
+  let x = rnd() * total;
+  for (let i = 0; i < list.length; i++) { x -= w[i]; if (x < 0) return list[i]; }
+  return list[list.length - 1];
+}
+
+/** Чистая: масштаб токена-ассета по размеру в имени (`..._6x6` -> 2, `..._3x3` -> 1): N/3, не меньше 1. */
+export const assetScaleOf = (id) => { const m = /_(\d+)x(\d+)$/.exec(String(id ?? "")); return m ? Math.max(1, Number(m[1]) / 3) : 1; };
+
+/**
+ * Ассет Nexus (kind "assets", только free) для токена объекта: случайный по весам из entries [{id, rare?}] -> { src, scale } | { reason }.
+ * Гейт — настройка formTokens (картинки FA для эффектов заклинаний; дерево — не призванное существо); без Nexus/офлайн — reason, исключений наружу нет. Файл уже на диске ensureLocal находит сам. Зовёт активный ГМ.
+ */
+export async function findAsset(entries, { setting = "formTokens", env = defaultEnv(), rnd = Math.random } = {}) {
+  try {
+    if (!game.user?.isGM || !env.enabled(setting)) return { reason: "disabled" };
+    const state = env.state();
+    if (state !== "ok") return { reason: state };
+    const pick = pickWeighted(entries, rnd);
+    if (!pick) return { reason: "not-found" };
+    const cat = await env.openCatalog("assets");
+    try {
+      const item = (await cat.list(pick.id.split("/").pop())).find((x) => catKey(x) === pick.id);
+      if (!item) return { reason: (await cat.any()) ? "not-found" : "catalog-empty" };
+      const key = `assets:${pick.id}`;
+      const got = await queue(`form-token:download:${key}`, () => {
+        if (!downloads.has(key)) downloads.set(key, cat.download(item).catch((e) => { downloads.delete(key); throw e; }));
+        return downloads.get(key);
+      });
+      return got ? { src: got, scale: assetScaleOf(pick.id) } : { reason: "offline" };
+    } finally { cat.close(); }
+  } catch (e) { debug("findAsset", e); return { reason: "offline" }; }
+}
+
 /** Превью бесплатного каталога для окна выбора формы (без скачивания): имена -> [{ name, file, thumb }] только найденные; любой сбой — []. Зовёт активный ГМ. */
 export async function catalogThumbs(names, { setting = "formTokens", env = defaultEnv() } = {}) {
   try {

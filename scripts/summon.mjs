@@ -41,7 +41,7 @@ export function actionPack(trigger, names) {
 }
 
 const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-const rectCell = (t, g) => ({ x: Math.round(t.x / g), y: Math.round(t.y / g), w: Math.max(1, Math.round(t.width)), h: Math.max(1, Math.round(t.height)) });
+export const rectCell = (t, g) => ({ x: Math.round(t.x / g), y: Math.round(t.y / g), w: Math.max(1, Math.round(t.width)), h: Math.max(1, Math.round(t.height)) });
 
 /** Расстояние в футах между прямоугольниками клеток (от края до края, диагональ 1-2-1 pf2e). */
 export function distanceFt(a, b, ftPerCell = 5) {
@@ -56,6 +56,22 @@ export function placeAt(want, size, occupied) {
   return occupied.some((o) => hit(r, o)) ? findSpot(r, size, occupied) : r;
 }
 
+/* ---------- объект (Древо-защитник): onUse.summon.object ---------- */
+
+const TREE = "icons/svg/tree.svg";
+/** ПЗ объекта: base на ранге fromRank, дальше perRank за каждый ранг. */
+export const objectHp = (o, rank) => o.hp.base + o.hp.perRank * Math.max(0, rank - o.hp.fromRank);
+/** Ранг сотворения: у импульса (rankFrom "halfLevel") — половина уровня с округлением вверх, иначе ранг сотворения/предмета. */
+export const objectRank = (o, { cast, item, level }) => (o?.rankFrom === "halfLevel" ? Math.ceil((level ?? 1) / 2) : cast ?? item ?? Math.ceil((level ?? 1) / 2));
+/** Павшее дерево = hp ≤ 0: скрыто; при hp > 0 показано. -> null (ничего) | { hidden, felled } (felled — только что повалено). */
+export function treeVisibility({ hp, hidden }) {
+  if (typeof hp !== "number") return null;
+  const down = hp <= 0;
+  return down === !!hidden ? null : { hidden: down, felled: down };
+}
+/** Прежние деревья того же автора и записи (single: новое убирает прежнее). tokens — [{ uuid, flag }]. */
+export const previousObjects = (tokens, { by, src, keep }) => tokens.filter((t) => t.flag?.kind === "object" && t.flag.by === by && t.flag.src === src && t.uuid !== keep).map((t) => t.uuid);
+
 const ownersOf = (actor) => Object.fromEntries(Object.entries(actor.ownership ?? {}).filter(([id, lvl]) => id !== "default" && lvl >= 3));
 
 /* ---------- состояние ---------- */
@@ -63,7 +79,7 @@ const ownersOf = (actor) => Object.fromEntries(Object.entries(actor.ownership ??
 const flagOf = (token) => token?.flags?.[MOD]?.summoned ?? null;
 const allTokens = () => (globalThis.game?.scenes?.contents ?? []).flatMap((s) => s.tokens?.contents ?? []);
 /** Приспешники призывателя (по uuid автора) на всех сценах. */
-export const minionsOf = (authorUuid) => allTokens().filter((t) => flagOf(t)?.by === authorUuid);
+export const minionsOf = (authorUuid) => allTokens().filter((t) => flagOf(t)?.by === authorUuid && flagOf(t).kind !== "object");
 const isSummoned = (actor) => !!actor?.token?.flags?.[MOD]?.summoned || !!actor?.system?.traits?.value?.includes?.("summoned") || !!actor?.getActiveTokens?.(true, true)?.some?.((t) => flagOf(t));
 const doneOf = (message) => message?.flags?.[MOD]?.summoned?.done ?? 0;
 const anchorSummoned = (anchor) => anchor?.flags?.[MOD]?.sustain?.summoned ?? [];
@@ -74,7 +90,7 @@ const warn = (key, data) => globalThis.ui?.notifications?.warn(L(`summon.${key}`
 function ctxOf(messageId) {
   const message = game.messages.get(messageId), item = message?.item, spec = summonSpec(item);
   if (!message || !item || !spec || !message.actor) throw new Error("summon: нет сообщения/предмета/правила");
-  const rank = message.flags?.pf2e?.origin?.castRank ?? item.rank ?? Math.ceil((message.actor.level ?? 1) / 2);
+  const rank = objectRank(spec.object, { cast: message.flags?.pf2e?.origin?.castRank, item: item.rank, level: message.actor.level });
   return { message, item, spec, author: message.actor, rank };
 }
 async function candidatesFor({ spec, rank }) {
@@ -114,7 +130,7 @@ const importActor = (uuid) => queue("summon:import", async () => {
   return Actor.implementation.create(data);
 });
 
-const durationOf = (item) => (item?.system?.duration?.sustained ? null : itemDuration(item?.system?.duration));
+const durationOf = (item, spec) => (item?.system?.duration?.sustained ? null : itemDuration(item?.system?.duration) ?? spec?.object?.duration ?? null);
 
 /** Создание существа n (идемпотентно по ключу «сообщение + номер»). Исполняет активный ГМ. -> { token, dup } */
 export function create(messageId, uuid, n, { sceneId, x, y, force = false } = {}) {
@@ -122,6 +138,7 @@ export function create(messageId, uuid, n, { sceneId, x, y, force = false } = {}
     const { message, item, spec, author, rank } = ctxOf(messageId), key = idemKey(messageId, n);
     const scene = game.scenes.get(sceneId);
     if (!scene) throw new Error("summon: нет сцены");
+    if (spec.object) return createObject({ message, item, spec, author, rank }, key, n, { scene, x, y, force });
     let token = scene.tokens.find((t) => flagOf(t)?.key === key), fresh = false;
     if (!token) {
       if (n !== doneOf(message) || n >= countOf(spec)) return { ok: false, reason: "order" };
@@ -137,7 +154,7 @@ export function create(messageId, uuid, n, { sceneId, x, y, force = false } = {}
       if (!spot) return { ok: false, reason: "noSpot" };
       const ftMax = force ? null : itemRange(item, []);   // дальность — и у ГМа: проверка только на клиенте обходится
       if (ftMax && distanceFt(rectCell(authorToken, g), spot, scene.grid.distance || 5) > ftMax) return { ok: false, reason: "far", ft: ftMax };
-      const data = td.toObject(), d = durationOf(item);
+      const data = td.toObject(), d = durationOf(item, spec);
       delete data._id;
       Object.assign(data, { x: spot.x * g, y: spot.y * g, delta: { ...data.delta, ownership: { default: 0, ...ownersOf(author) } } });
       data.flags = { ...data.flags, [MOD]: { summoned: { key, by: author.uuid, msg: messageId, anchor: sustain.anchorKey(messageId), sustained: !!item.system?.duration?.sustained, until: d ? game.time.worldTime + durSeconds(d) : null } } };
@@ -148,6 +165,49 @@ export function create(messageId, uuid, n, { sceneId, x, y, force = false } = {}
     return { ok: true, token: token.uuid, dup: !fresh };
   });
 }
+
+/** Мировой актёр-объект (hazard): один на запись; ПЗ каждого дерева — в дельте токена. */
+const importObject = (item, o) => queue("summon:import", async () => {
+  const src = `object:${item.slug ?? item.name}`, have = game.actors.find((a) => a.flags?.[MOD]?.summonSource === src);
+  if (have) return have;
+  return Actor.implementation.create({
+    name: item.name, type: "hazard", img: TREE, folder: await actorFolder(), ownership: { default: 0 },
+    system: { attributes: { ac: { value: o.ac }, hp: { value: o.hp.base, max: o.hp.base } } },
+    prototypeToken: { name: item.name, texture: { src: TREE } }, flags: { [MOD]: { summonSource: src } }
+  });
+});
+
+/** Объект вместо существа: без выбора из списка, без лимита приспешников, без якоря Поддержания. */
+async function createObject({ message, item, spec, author, rank }, key, n, { scene, x, y, force }) {
+  const o = spec.object;
+  let token = scene.tokens.find((t) => flagOf(t)?.key === key), fresh = false;
+  if (!token) {
+    if (n !== doneOf(message) || n >= 1) return { ok: false, reason: "order" };
+    const authorToken = scene.tokens.find((t) => t.actorId === author.id || t.actor?.uuid === author.uuid);
+    if (!authorToken) return { ok: false, reason: "noToken" };
+    const actor = await importObject(item, o), g = scene.grid.size;
+    const td = await actor.getTokenDocument({ disposition: authorToken.disposition, actorLink: false });
+    const spot = placeAt({ x: Math.round(x / g), y: Math.round(y / g) }, { w: 1, h: 1 }, scene.tokens.map((t) => rectCell(t, g)));
+    if (!spot) return { ok: false, reason: "noSpot" };
+    const ftMax = force ? null : itemRange(item, []) ?? o.range ?? null;
+    if (ftMax && distanceFt(rectCell(authorToken, g), spot, scene.grid.distance || 5) > ftMax) return { ok: false, reason: "far", ft: ftMax };
+    const data = td.toObject(), d = durationOf(item, spec), hp = objectHp(o, rank);
+    delete data._id;
+    Object.assign(data, {
+      name: item.name, x: spot.x * g, y: spot.y * g, sort: Math.min(0, ...scene.tokens.map((t) => t.sort ?? 0)) - 1,   // крона не накрывает токены
+      texture: { ...data.texture, src: TREE }, delta: { ...data.delta, ownership: { default: 0 }, system: { attributes: { hp: { value: hp, max: hp } } } }
+    });
+    const src = item._stats?.compendiumSource ?? item.sourceId ?? item.uuid;
+    data.flags = { ...data.flags, [MOD]: { summoned: { kind: "object", key, src, by: author.uuid, msg: message.id, until: d ? game.time.worldTime + durSeconds(d) : null, guard: { ...o.guard, alliance: author.alliance ?? null } } } };
+    [token] = await scene.createEmbeddedDocuments("Token", [data]);
+    fresh = true;
+  }
+  if (o.single) await dismissTokens(previousObjects(allTokens().map((t) => ({ uuid: t.uuid, flag: flagOf(t) })), { by: author.uuid, src: flagOf(token)?.src, keep: token.uuid }));
+  if (doneOf(message) <= n) await message.update({ [flagPath("summoned", "done")]: n + 1 });
+  if (fresh) await whisper(author, L("summon.objectPlaced", { name: esc(token.name), hp: token.actor?.system?.attributes?.hp?.max ?? "?" }) + (author.alliance ? "" : L("summon.noAlliance")), "summon", {});
+  return { ok: true, token: token.uuid, dup: !fresh };
+}
+
 
 /** Шаги после токена — все идемпотентны (повтор после сбоя доделывает недоделанное). */
 async function settle(token, { message, item, author, n, fresh }) {
@@ -212,7 +272,7 @@ export async function onAnchorDeleted(item) {
 /** Хук deleteToken: убран вручную/вместе со сценой/изгнан — подрезать якорь. Пустой список — якорь снимается (sustain.prune). */
 export async function onTokenDeleted(token) {
   const f = flagOf(token);
-  if (!f || !guardActiveGM()) return;
+  if (!f || f.kind === "object" || !guardActiveGM()) return;
   const author = authorOfToken(token), anchor = sustain.findAnchor(author, f.anchor);
   if (!anchor) return;
   const left = anchorSummoned(anchor).filter((u) => u !== token.uuid);
@@ -220,9 +280,19 @@ export async function onTokenDeleted(token) {
   if (!left.length) await sustain.prune(author, f.anchor);
 }
 
-/** 0 ОЗ — изгнан. */
+/** 0 ОЗ — изгнан; дерево (объект) не изгоняется: скрывается при ≤0 и возвращается при >0, убирается только по сроку. */
 export async function maybeBanish(token) {
-  if (!flagOf(token) || !guardActiveGM() || !(token.actor?.system?.attributes?.hp?.value <= 0)) return;
+  const f = flagOf(token);
+  if (!f || !guardActiveGM()) return;
+  if (f.kind === "object") {
+    const v = treeVisibility({ hp: token.actor?.system?.attributes?.hp?.value, hidden: token.hidden });
+    if (!v) return;
+    await token.update({ hidden: v.hidden });
+    const author = authorOfToken(token);
+    if (v.felled && author) await whisper(author, L("summon.felled", { name: esc(token.name) }), "summon", {});
+    return;
+  }
+  if (!(token.actor?.system?.attributes?.hp?.value <= 0)) return;
   const name = token.name, author = authorOfToken(token);
   await token.delete();
   if (author) await whisper(author, L("summon.banished", { name: esc(name) }), "summon", {});
@@ -376,17 +446,17 @@ async function chooseDialog(item, { list, maxLevel, left }) {
 async function onClick(message, ev) {
   const item = message.item, author = message.actor, scene = canvas.scene;
   const token = message.token?.object ?? author?.getActiveTokens?.()[0];
-  const force = ev.altKey && game.user.isGM;
-  const bad = limitProblem({ nested: isSummoned(author), minions: minionsOf(author.uuid).length, force });
+  const force = ev.altKey && game.user.isGM, o = summonSpec(item)?.object;
+  const bad = o ? null : limitProblem({ nested: isSummoned(author), minions: minionsOf(author.uuid).length, force });
   if (bad) return warn(bad, { max: LIMIT });
-  const info = await callGM("summonList", message.id);
-  if (!info?.ok) return globalThis.ui.notifications.warn(L("chat.failed", { reason: info?.reason }));
-  const pick = await chooseDialog(item, info.result);
+  const info = o ? null : await callGM("summonList", message.id);
+  if (!o && !info?.ok) return globalThis.ui.notifications.warn(L("chat.failed", { reason: info?.reason }));
+  const pick = o ? { uuid: null, qty: 1 } : await chooseDialog(item, info.result);
   if (!pick) return;
-  const ft = itemRange(item, []);
+  const ft = itemRange(item, []) ?? o?.range ?? null;
   const base = doneOf(message);
   for (let i = 0; i < pick.qty; i++) {
-    const pt = await pickPoint(token, ft, info.result.list.find((c) => c.uuid === pick.uuid)?.token ?? null);
+    const pt = await pickPoint(token, ft, o ? { src: TREE, w: 1, h: 1 } : info.result.list.find((c) => c.uuid === pick.uuid)?.token ?? null);
     if (!pt) return;
     const res = await callGM("summonCreate", message.id, pick.uuid, base + i, { sceneId: scene.id, x: pt.x, y: pt.y, force: pt.force && game.user.isGM });
     const r = res?.result;
@@ -401,7 +471,7 @@ function bind(message, html) {
   if (!spec || doneOf(message) >= countOf(spec) || root.querySelector("[data-af-summon]")) return;
   const box = document.createElement("div");
   box.className = "message-buttons paf-summon-box";
-  box.innerHTML = cardButton(`data-af-summon="1"`, esc(L("summon.button")));
+  box.innerHTML = cardButton(`data-af-summon="1"`, esc(spec.object ? L("summon.placeObject", { name: message.item.name }) : L("summon.button")));
   const btn = box.firstElementChild;
   btn.addEventListener("click", async (ev) => {
     btn.disabled = true;

@@ -485,7 +485,7 @@ export async function runRegion(region, message) {
 
     const excl = excludesAuthor(onUse, region);
     const tokens = (region.parent?.tokens?.contents ?? [])
-      .filter((t) => t.testInsideRegion(region))
+      .filter((t) => t.testInsideRegion(region) && t.flags?.["pf2e-automato"]?.summoned?.kind !== "object")   // дерево-объект не цель области (hazard держал бы урон)
       .filter((t) => !(excl && (use.token ? t.uuid === use.token : t.actor?.uuid === use.actor)))
       .map((t) => ({ key: t.id, uuid: t.uuid, name: t.name, pc: !!t.actor?.hasPlayerOwner }));
     const u = areaUpdate(use, region.uuid, tokens), point = areaPoint(null, region);

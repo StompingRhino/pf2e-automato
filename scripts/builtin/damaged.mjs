@@ -13,6 +13,7 @@ import { esc, card, cardButton, headOf, combatOf, effectSource, recipients, dist
 import { subscribe, install } from "./apply-hook.mjs";
 import { damageTargets, alreadyApplied } from "./shield-block.mjs";
 import { LINK_OPTION, applyHp } from "./damage-link.mjs";
+import { subtractDamage } from "./damage-math.mjs";
 
 export const hintOf = (m) => m?.flags?.[MOD]?.damaged;
 export const HOLD_MS = 30_000;       // как окно реакции: нет решения — «без реакции»
@@ -181,8 +182,8 @@ export function holdsFor(hold, src, now, consumed = new Set(), at = Date.now()) 
     .map(([id, e]) => ({ id, ...e }));
 }
 
-/** Чистая: урон меньше на cut: число или бросок pf2e (alter(1, -cut), как у damage-link). */
-export const cutDamage = (d, cut) => (typeof d === "number" ? d - cut : d.alter(1, -cut));
+/** Чистая: урон меньше на cut: число или бросок pf2e (по экземплярам, damage-math.mjs). */
+export const cutDamage = subtractDamage;
 
 /**
  * Ждёт, пока ни одна из записей не останется pending (или ms). -> id, всё ещё pending (таймаут).
@@ -245,10 +246,11 @@ export async function onMessage(message) {
     for (const t of await challengeTargets(cardMsg)) if (t.token?.uuid) { uuids.add(t.token.uuid); mult.set(t.token.uuid, results[t.key] ? multOf(results[t.key].degree, link.table) : null); }
   }
   const { reactionAvailable } = await import("../reactions.mjs"), { requirementOf } = await import("../cast.mjs"), { alliesIn } = await import("../apply.mjs");
-  const options = damageOptions(message);
+  const { coversAll } = await import("./guard.mjs"), options = damageOptions(message);
   for (const uuid of uuids) {
     const token = await fromUuid(uuid), target = token?.actor;
     if (!target || !(target.hitPoints?.value > 0) || alreadyApplied(message, token.id) || !multGate(mult.get(uuid))) continue;
+    if (await coversAll(message, token)) continue;   // Древо-защитник примет весь урон — реакция не нужна
     const turn = turnKey(combatOf(game.combats, target));
     for (const { actor: owner, token: ownerToken } of reactorsOf(token)) {
       if (!(owner.hitPoints?.value > 0) || !reactionAvailable(owner)) continue;
