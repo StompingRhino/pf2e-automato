@@ -3323,5 +3323,648 @@
     }
    }
   ]
+ },
+ "freq": {
+  "bySource": {
+   "Compendium.pf2e.actionspf2e.Item.85f4wG1ALCXBMwaC": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.actionspf2e.Item.9d9pexfcsyS9yFVT": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.actionspf2e.Item.SdjdsilE69Qz22VC": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.actionspf2e.Item.jjGrujDzGLPYcuY0": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.actionspf2e.Item.zRyF20WuVthAUvoC": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.familiar-abilities.Item.0rq3ufpxB9iHlIkd": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.familiar-abilities.Item.D0ltNUJnN7UjJpA1": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.familiar-abilities.Item.Q42nrq9LwDdbeZM5": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.familiar-abilities.Item.REJfFezELjc5Gzsy": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.familiar-abilities.Item.ReIgBsaM95BTvHpN": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.familiar-abilities.Item.WLqOwdUF41pjNAlo": {
+    "value": 1,
+    "unit": "hours"
+   },
+   "Compendium.pf2e.familiar-abilities.Item.ZtKb89o1PPhwJ3Lx": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.familiar-abilities.Item.asOhEdyF8CWFbR96": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.familiar-abilities.Item.gVPtUSEPZYGRIRyQ": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.familiar-abilities.Item.jPvjeX1CsUZQSszu": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.familiar-abilities.Item.mKmBgQmPmiLOlEvw": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.familiar-abilities.Item.u4Sp4K4WOi461xo1": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.bestiary-ability-glossary-srd.Item.0B39GdScyZMPWalX": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.bestiary-family-ability-glossary.Item.d6eWuFd6pw6ffvPC": {
+    "value": 1,
+    "unit": "hours"
+   },
+   "Compendium.pf2e.bestiary-family-ability-glossary.Item.fqZhojt2M5LfSKSH": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.bestiary-family-ability-glossary.Item.mwEig0MYM7EIibSU": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.bestiary-family-ability-glossary.Item.vOvzh8XCMmvtW0Ws": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.bestiary-family-ability-glossary.Item.yLdiZ2AnjZ8KuT7v": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.adventure-specific-actions.Item.7NQGN3kxiXetaTT4": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.adventure-specific-actions.Item.9NWMchSkF940L0SW": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.adventure-specific-actions.Item.Bh1Qnh8JP4CMysRK": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.adventure-specific-actions.Item.aCFKA59YgGDNnSJ8": {
+    "value": 1,
+    "unit": "hours"
+   },
+   "Compendium.pf2e.blog-bestiary.Actor.ssaJVgjmjvk9ezoe.Item.JlgHa4PpxhzNImV0": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.hellbreakers-bestiary.Actor.4PqTl6r2Rhhy3VPG.Item.SAvHN1viZsrXMnxM": {
+    "value": 1,
+    "unit": "minutes"
+   },
+   "Compendium.pf2e.hellbreakers-bestiary.Actor.KCEdUHvPf4anTpnK.Item.FSEozSpG3gJKBYjt": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.hellbreakers-bestiary.Actor.KxFEwqWX9FFGobeC.Item.PVYcvavRgEgDbplK": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.hellbreakers-bestiary.Actor.Nkmr1Sic5LpIsats.Item.fuy8YjbPAUqlbOc8": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.hellbreakers-bestiary.Actor.bVbBeO60civ7Ac7N.Item.2gR12XiZvj6T9iNV": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.hells-destiny-bestiary.Actor.5C7hkEe0ieCbGkVZ.Item.Sn2xWpeqTp1oHFT6": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.hells-destiny-bestiary.Actor.5C7hkEe0ieCbGkVZ.Item.Qlizxn7YdaCYDcX7": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.hells-destiny-bestiary.Actor.5VwNNFHv7o3vFBbK.Item.dvv7qTPvf2sO7Ca3": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.hells-destiny-bestiary.Actor.R34RybN7nVDrGkgz.Item.ITTMOEMEeuElgajb": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.hells-destiny-bestiary.Actor.RHgSOud92ADrlg04.Item.8khipjo5faWmqtx2": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.hells-destiny-bestiary.Actor.RwK0eh7c0FZGHAh8.Item.6OHVPrLywucNXKRj": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.hells-destiny-bestiary.Actor.kyfHWoDxuOkJfGEj.Item.VF0wsOMDhXVJG1Qe": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.hells-destiny-bestiary.Actor.lTXJpFCZDZTtVY3R.Item.1nbOMRENUj5GYTQL": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.hells-destiny-bestiary.Actor.xUcXP3LZPFwYQwR1.Item.tJiTuhnYrzNYwMvq": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.hells-destiny-bestiary.Actor.zBLBcf920EzpZve3.Item.X0RMAYFeESgrAaxL": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.hells-destiny-bestiary.Actor.zBLBcf920EzpZve3.Item.IVVQNnLlawzqFTYA": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.lost-omens-bestiary.Actor.7WvOIrKPhd5A0w5X.Item.Pb496nlgKWKH8nfK": {
+    "value": 1,
+    "unit": "hours"
+   },
+   "Compendium.pf2e.lost-omens-bestiary.Actor.Ev1Gle9bZsfkN6p6.Item.i9VTUX1hC7QRu6cr": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.lost-omens-bestiary.Actor.Ev1Gle9bZsfkN6p6.Item.qIWYJcyZj1ZBq0vg": {
+    "value": 10,
+    "unit": "minutes"
+   },
+   "Compendium.pf2e.lost-omens-bestiary.Actor.FTyExyRQskSzLLgp.Item.wGVkpcBhXQgv8cPU": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.lost-omens-bestiary.Actor.IhOhf4a0M7z3EpQI.Item.ArojIReUv3wvU4nR": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.lost-omens-bestiary.Actor.gSjijU7CefEIpdN1.Item.0DqJnTG0QE7xDUqg": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.kingmaker-bestiary.Actor.0EQySWHT7D68yrrx.Item.7wUcFmCK8o5TqTUO": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.kingmaker-bestiary.Actor.1SEyDYO9l6mcFhoy.Item.oxPlAKtVAWcUgUek": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.pfs-season-7-bestiary.Actor.clCZt9Kcl6Zn94ZG.Item.9D0BLr8DbnzoJ8QQ": {
+    "value": 1,
+    "unit": "minutes"
+   },
+   "Compendium.pf2e.pfs-season-7-bestiary.Actor.j0iZU9FnWCtVP9nl.Item.VAjIOFfXsEkMxTAZ": {
+    "value": 1,
+    "unit": "hours"
+   },
+   "Compendium.pf2e.revenge-of-the-runelords-bestiary.Actor.D6LQmc3jwvoLf7gc.Item.URcGZAgwgFGiU9cQ": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.revenge-of-the-runelords-bestiary.Actor.U32Vush39MP50jhu.Item.cKDh0WYEzxWV5L67": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.revenge-of-the-runelords-bestiary.Actor.U32Vush39MP50jhu.Item.Ukqna71c9zIfLg06": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.revenge-of-the-runelords-bestiary.Actor.VzbJJXwyySpyPD2p.Item.URcGZAgwgFGiU9cQ": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.revenge-of-the-runelords-bestiary.Actor.dQCxG9v2LE0niYEp.Item.EyThI0Md5LdRsiYE": {
+    "value": 1,
+    "unit": "days"
+   },
+   "Compendium.pf2e.revenge-of-the-runelords-bestiary.Actor.dQCxG9v2LE0niYEp.Item.x5sbOBk2XDGOLPpi": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.revenge-of-the-runelords-bestiary.Actor.igeNfVBZBcIkCzcZ.Item.9ZexU5G8vR01fndt": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.the-dead-gods-hand-bestiary.Actor.oFK6kZAsaCe2Th41.Item.sUMqyXt9FoI9LYWW": {
+    "value": 1,
+    "unit": "rounds"
+   },
+   "Compendium.pf2e.paizo-pregens.Actor.pdZNO5gqhB4hN61A.Item.UKNSawxnkkxskD0S": {
+    "value": 1,
+    "unit": "rounds"
+   }
+  },
+  "bySlug": {
+   "scrappy-defiance@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "days"
+     }
+    }
+   ],
+   "relentless-assault@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "days"
+     }
+    }
+   ],
+   "inflict-punishment@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "days"
+     }
+    }
+   ],
+   "forged-in-fire@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "days"
+     }
+    }
+   ],
+   "hellish-impression@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "days"
+     }
+    }
+   ],
+   "power-attack@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    },
+    {
+     "sig": "loc:PowerAttack",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "melfesh-monster-swell@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "hours"
+     }
+    }
+   ],
+   "lich-drain-soul-cage@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "days"
+     }
+    }
+   ],
+   "greater-barghest-mutation-vestigial-arm-strike@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "zombie-shock-electromechanical-phasing@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "days"
+     }
+    }
+   ],
+   "skeleton-bone-storm@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "days"
+     }
+    }
+   ],
+   "perception-filter@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "days"
+     }
+    }
+   ],
+   "invoke-eiseth@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "shootists-draw@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "exhale-poison@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "hours"
+     }
+    }
+   ],
+   "glittering-scales@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "minutes"
+     }
+    }
+   ],
+   "swift-daggers@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "sense-heartbond@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "days"
+     }
+    }
+   ],
+   "commanders-orders@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "antimagic-armor@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "days"
+     }
+    }
+   ],
+   "cushioned-blow@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "days"
+     }
+    }
+   ],
+   "frenzied-feast@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "break-bottle@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "hells-arrest@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "beat-the-lawbreakers@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "phalanx-strike@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "tentacle-onslaught@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "glorify@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "fear-the-chain@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "flail-assault@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "spare-the-dying-free-the-tormented@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "hours"
+     }
+    }
+   ],
+   "drain-hoard@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "days"
+     }
+    }
+   ],
+   "treasure-tsunami@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 10,
+      "unit": "minutes"
+     }
+    }
+   ],
+   "skewering-strikes@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "molten-metal-rain@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "minutes"
+     }
+    }
+   ],
+   "damned-restoration@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "hours"
+     }
+    }
+   ],
+   "quickened-casting@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "days"
+     }
+    }
+   ],
+   "slither-between-realities@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "visions-of-the-forever@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "sovereign-of-the-false@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "kiss-of-locusts@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ],
+   "fire-cone@action": [
+    {
+     "sig": "",
+     "freq": {
+      "value": 1,
+      "unit": "rounds"
+     }
+    }
+   ]
+  }
  }
 }

@@ -3,6 +3,9 @@
 //   наговор (hex) — один за ход; реакция с листа — одна за раунд (флаг reactionSpent, его же ставят реакции и Блок щитом модуля);
 //   частота (system.frequency) исчерпана — pf2e сам её списывает (createUseActionMessage), но на нуле действие не запрещает;
 //   перезарядка — встроенный бросок «#Recharge» в описании: модуль бросает N раундов (rc_<id> на авторе) и до их конца не пускает; в бою;
+//   flourish — одно действие с этой чертой за раунд; ярость — действие с «концентрацией» (и импульс) без черты rage нельзя, черта rage — только в ярости;
+//   частота из текста (rules/use-limits.json, ключ freq) — счётчик на флаге актёра fq_<id>, сброс — отдых; Исцеляющий фамильяр — только в вашем пространстве;
+//   Рубящий шквал — две цели только при двух свободных руках;
 //   требования к автору (rules/use-limits.json): прошлое действие — успешный Удар (штамп act на сообщениях), держит существо, свободная рука.
 // Делаем как досягаемость (melee-reach.mjs): действия нет, предупреждение; Alt при клике — решение ГМа; unchecked() — свои сценарии модуля.
 // Точки: (1) SpellcastingEntry#cast до списания слота/фокуса, (2) preCreateChatMessage — карточка использования любого пути (лист, cast.mjs).
@@ -10,11 +13,13 @@
 // Файл по-прежнему зовётся impulse-gate: roundKey импортирует kinetic-aura.mjs (не наш файл).
 import { L, MOD, guardActiveGM } from "../util.mjs";
 import { modeOf } from "../settings.mjs";
-import { combatOf, recipients, whisper } from "./lib.mjs";
-import { slugOf, limitEntry } from "../rules.mjs";
+import { combatOf, recipients, whisper, paHas } from "./lib.mjs";
+import { slugOf, limitEntry, freqEntry } from "../rules.mjs";
+import { usesLeft, withUse, tracksFor, clock } from "../cast.mjs";
+import { familiarsOf, familiarToken } from "../familiar.mjs";
 import { AURA_SLUG } from "./kinetic-aura.mjs";
 import { mechOf, rechargeEntry, isUseItem, USE_ITEMS } from "../mech.mjs";
-import { critRecharges, isBreath, rollDice, rollData, rechargeLeft, hitOf, lastAct, reqFails, holdsFrom } from "./limit-text.mjs";
+import { critRecharges, isBreath, rollDice, rollData, rechargeLeft, hitOf, lastAct, reqFails, holdsFrom, breaksRage, raging, instinctElements, cellsOverlap, STARTERS } from "./limit-text.mjs";
 
 const traitsOf = (item) => item?.system?.traits?.value ?? [];
 export const TORCH_EFFECT = "Compendium.pf2e.feat-effects.Item.61qS86bjxg8HCJBY";
@@ -33,10 +38,18 @@ export const turnKey = (combat) => (combat?.started ? `${combat.id}:${combat.rou
 export const LIMITS = [
   { reason: "noAura", applies: (c) => c.kinetic !== false && c.traits.includes("impulse"), fails: (c) => !c.aura, vars: (c) => ({ channel: c.channelName }) },
   { reason: "noHand", applies: (c) => c.kinetic !== false && c.traits.includes("impulse"), fails: (c) => c.handsFree === 0 },   // описание черты impulse: «only if you have a hand free»; pf2e считает hands.free по ancestry.hands и удерживаемым предметам (pf2e.mjs:35351)
+  // ярость: pf2e черту rage не принуждает (TraitDescriptionRage — только текст); при уступке pf2e-automations (paRage) ярость не ведём, как rage.mjs
+  { reason: "rage", applies: (c) => c.raging && !c.paRage, fails: (c) => breaksRage({ traits: c.traits, slug: c.slug, instinctEls: c.instinctEls, clarity: c.clarity, rageSlugs: c.rageSlugs, repertoire: c.repertoire }), vars: () => ({ concentrate: traitName("concentrate"), rage: traitName("rage") }) },
+  { reason: "clarity", applies: (c) => c.slug === "moment-of-clarity", fails: () => false, mark: (c) => ["clarityUntil", c.turn ?? c.now.time + 6] },   // не блок: метка «концентрация разрешена до конца хода»
+  // только персонажи: у NPC ярость бывает без эффекта effect-rage; начало ярости (Rage, Quick Tempered) черту rage может нести — ярости не требует
+  { reason: "rageTrait", applies: (c) => c.traits.includes("rage") && c.actorType === "character" && !c.paRage && !STARTERS.has(c.slug), fails: (c) => !c.raging, vars: () => ({ rage: traitName("rage") }) },
   { reason: "overflow", applies: (c) => c.kinetic !== false && c.traits.includes("impulse") && c.traits.includes("overflow"), fails: (c) => !!c.round && c.overflowRound === c.round, mark: (c) => c.round && ["overflowRound", c.round] },
+  { reason: "flourish", applies: (c) => c.traits.includes("flourish"), fails: (c) => !!c.round && c.flourishRound === c.round, mark: (c) => c.round && ["flourishRound", c.round], vars: () => ({ trait: traitName("flourish") }) },   // TraitDescriptionFlourish: одно действие с чертой за раунд
   { reason: "auraActive", applies: (c) => c.slug === "channel-elements", fails: (c) => c.auraEffect },   // «Your kinetic gate isn't active»
   { reason: "torches", applies: (c) => c.slug === "eternal-torch", fails: (c) => c.torches >= c.conMod, vars: (c) => ({ n: c.conMod }) },   // «maximum number of Eternal Torches equal to your Constitution modifier»; единственный предмет с таким лимитом (группы нет)
   { reason: "hex", applies: (c) => c.traits.includes("hex"), fails: (c) => !!c.turn && c.hexTurn === c.turn, mark: (c) => c.turn && ["hexTurn", c.turn] },
+  { reason: "inSpace", applies: (c) => c.slug === "restorative-familiar" && c.actorType === "familiar", fails: (c) => c.inSpace === false },   // «It must be in your space»; единственная такая способность (группы нет)
+  { reason: "twoHands", applies: (c) => c.slug === "slashing-gust", fails: (c) => c.targetCount > 1 && c.handsFree !== undefined && c.handsFree < 2 },   // две цели — при двух свободных руках; у NPC system.hands нет — не блок
   // «за ход/раунд» pf2e восстанавливает только в бою (в начале хода): вне боя такого ограничения нет, как у roundKey
   // перезарядка: только в бою, у NPC и персонажей; срок бросает модуль (число на флаге), «ещё N» — раундов до нового использования. mode.limits=off — не бросаем и не ставим
   { reason: "recharge", applies: (c) => (!!c.rc || !!c.rcLock) && c.inCombat && c.limitsOn, fails: (c) => rechargeLeft(c.rcLock, c.combatId, c.roundNum) > 0, vars: (c) => ({ n: rechargeLeft(c.rcLock, c.combatId, c.roundNum), until: c.rcLock.until }), mark: (c) => c.rc?.ids.map((id) => [`rc_${id}`, rcNew(c, id)]) },
@@ -44,6 +57,8 @@ export const LIMITS = [
   { reason: "req", applies: (c) => !!c.req, fails: (c) => reqFails(c.req, c), vars: (c) => ({ need: c.req.any.map((cl) => needText(cl, c.actor)).join(L("builtin.limit.or")) }) },
   // pf2e списывает частоту ДО карточки: законное использование приходит в preCreate уже с 0 — его отличает свежее списание (justSpent)
   { reason: "frequency", applies: (c) => !!c.frequency && (c.inCombat || !["turn", "round"].includes(c.frequency.per)), fails: (c) => c.frequency.value <= 0 && !c.justSpent },
+  // частота только в тексте (system.frequency пуст — pf2e не считает): счётчик модуля на флаге актёра fq_<id>, сброс — отдых; «раз в день» у NPC не блокируем (tracks)
+  { reason: "freqText", applies: (c) => !!c.freqText && c.tracks && (c.inCombat || c.freqText.unit !== "rounds"), fails: (c) => usesLeft(c.freqSlot, c.freqText, c.now) === 0, vars: (c) => ({ uses: c.freqText.uses ?? 1, n: c.freqText.value, unit: unitText(c.freqText) }), mark: (c) => [`fq_${c.itemId}`, withUse(c.freqSlot, c.freqText, c.now, rid())] },
   { reason: "reaction", applies: (c) => c.reaction && c.actorType === "character", fails: (c) => c.reactionSpent, mark: (c) => c.round && c.inCombat && ["reactionSpent", c.reactionFlag] }   // NPC: реакций бывает несколько
 ];
 
@@ -98,6 +113,36 @@ function heldStates(actor) {
   return out;
 }
 
+const rid = () => globalThis.foundry?.utils?.randomID?.() ?? Math.random().toString(36).slice(2, 10);
+/** Название черты как в pf2e (PF2E.Trait*), иначе сам slug. */
+const traitName = (t) => { const k = globalThis.CONFIG?.PF2E?.actionTraits?.[t]; return k ? game.i18n.localize(k) : t; };
+
+/** Стихии Elemental Instinct актёра: опции броска, иначе выбор ChoiceSet самого предмета. */
+const instinctOf = (actor) => instinctElements(actor.getRollOptions?.(["all"]), Object.values(actor.items.find((i) => i.slug === "elemental-instinct")?.flags?.pf2e?.rulesSelections ?? {}));
+/** Raging Intimidation: в ярости Demoralize и Scare to Death получают черту rage. */
+const rageSlugsOf = (actor) => (actor.items.some((i) => i.slug === "raging-intimidation") ? ["demoralize", "scare-to-death"] : []);
+/** Moment of Clarity: метка — ключ хода (в бою) или срок worldTime (вне боя); концентрация разрешена до конца хода. */
+const clarityOf = (f, turn, time) => (typeof f.clarityUntil === "string" ? !!turn && f.clarityUntil === turn : typeof f.clarityUntil === "number" && f.clarityUntil > time);
+/** Поля ярости для breaksRage: instinctEls, clarity, rageSlugs (для rage.mjs — путь без карточки). */
+export function rageExtras(actor) {
+  return { instinctEls: instinctOf(actor), clarity: clarityOf(actor.flags?.[MOD] ?? {}, turnKey(combatOf(game.combats, actor)), game.time.worldTime), rageSlugs: rageSlugsOf(actor) };
+}
+
+/** Токен фамильяра и токен мастера делят клетку: true/false; нет сцены/токена/мастера — null (не блок). */
+function inSpaceOf(actor) {
+  const scene = sceneOf(actor), master = actor.master, ft = scene && familiarToken(actor, scene);
+  const mt = scene && master && [...scene.tokens].find((t) => t.actorId === master.id);
+  if (!ft || !mt) return null;
+  const size = scene.grid?.size ?? 100, cells = (t) => ({ x: t.x / size, y: t.y / size, w: t.width, h: t.height });
+  return cellsOverlap(cells(ft), cells(mt));
+}
+
+/** Подпись единицы окна частоты (раунд/минута/час/день), склонение по правилам языка. */
+const unitText = (fq) => {
+  const cat = new Intl.PluralRules(game.i18n.lang).select(fq.value), key = `builtin.limit.freqUnit.${fq.unit}`;
+  return L(game.i18n.has(`PF2E_AUTOMATO.${key}.${cat}`) ? `${key}.${cat}` : `${key}.other`);
+};
+
 const rnd = () => globalThis.CONFIG?.Dice?.randomUniform?.() ?? Math.random();
 
 /** Контекст для таблицы; тяжёлое (аура, лента) — лениво. */
@@ -108,7 +153,16 @@ function ctxOf(actor, item) {
   return {
     traits: traitsOf(item), slug: item.slug, actorType: actor.type, reaction: isReaction(item), round, turn: turnKey(combat), inCombat,
     kinetic: actor.type === "character" && actor.itemTypes.action.some((a) => a.slug === "channel-elements"),
-    handsFree: actor.system?.hands?.free?.value, overflowRound: f.overflowRound, hexTurn: f.hexTurn,
+    handsFree: actor.system?.hands?.free?.value, overflowRound: f.overflowRound, hexTurn: f.hexTurn, flourishRound: f.flourishRound,
+    raging: raging(actor), paRage: paHas("rage"), targetCount: game.user?.targets?.size ?? 0, freqSlot: f[`fq_${item.id}`],
+    get now() { return clock(actor); },
+    get instinctEls() { return instinctOf(actor); },
+    get clarity() { return clarityOf(f, turnKey(combat), game.time.worldTime); },
+    get rageSlugs() { return rageSlugsOf(actor); },
+    get repertoire() { return item.type === "spell" && item.spellcasting?.category === "spontaneous" && actor.items.some((i) => i.slug === "bloodrager-dedication"); },
+    get inSpace() { return inSpaceOf(actor); },
+    get freqText() { return item.system?.frequency ? null : freqEntry(item); },
+    get tracks() { return tracksFor(actor.master?.type ?? actor.type, this.freqText); },
     reactionSpent: !!rs && inCombat && rs.combat === combat.id && rs.round === combat.round,
     reactionFlag: inCombat ? { combat: combat.id, round: combat.round } : null,
     conMod: actor.abilities?.con?.mod ?? 0,
@@ -201,7 +255,19 @@ const rcPrev = (c, id) => { const old = c.rcLocks?.[`rc_${id}`]; return recharge
 /** Чистая: новый замок на id; уже стоящий более долгий замок не укорачиваем (until = max). */
 const rcNew = (c, id) => { const old = rcPrev(c, id); return old && old.until > c.rcMark.until ? { ...c.rcMark, until: old.until } : c.rcMark; };
 /** Чистая: замки, которые отметки перезапишут, — прежнее значение едет с карточкой в limitClear (удаление карточки возвращает его). */
-export const clearFor = (c, marks) => Object.fromEntries(Object.keys(marks).filter((k) => k.startsWith("rc_")).map((k) => [k, rcPrev(c, k.slice(3))]).filter(([, v]) => v));
+export const clearFor = (c, marks) => Object.fromEntries(Object.keys(marks).filter((k) => /^(rc|fq)_/.test(k)).map((k) => [k, k.startsWith("rc_") ? rcPrev(c, k.slice(3)) : c.rcLocks?.[k]]).filter(([, v]) => v));   // fq_: прежний счётчик — удаление карточки возвращает его, а не стирает весь учёт
+
+/** Чистая: счётчики fq_* флагов, которые снимает отдых: все, кроме «раз в N дней» (их закрывает время мира). multi(id) — окно предмета больше суток. */
+export const fqStale = (flags, multi) => Object.keys(flags ?? {}).filter((k) => k.startsWith("fq_") && !multi(k.slice(3)));
+
+/** pf2e.restForTheNight: счётчики «в день» актёра и его фамильяров обнуляются. */
+async function resetFq(actor) {
+  for (const a of [actor, ...familiarsOf(actor)]) {
+    const multi = (id) => { const it = a.items.get(id), f = it && freqEntry(it); return f?.unit === "days" && f.value > 1; };
+    const keys = fqStale(a.flags?.[MOD], multi);
+    if (keys.length) await a.update(Object.fromEntries(keys.map((k) => [`flags.${MOD}.-=${k}`, null]))).catch((e) => console.warn(`${MOD} | use-limits rest`, e));
+  }
+}
 
 /** Чистая по ctx: отметки законного использования {флаг: значение} (и по Alt тоже: действие совершено). */
 export const marksFor = (c) => {
@@ -369,6 +435,7 @@ export function install() {
   installed = true;
   Hooks.on("createChatMessage", onCreate);
   Hooks.on("preUpdateItem", onPreUpdateItem);
+  Hooks.on("pf2e.restForTheNight", (actor) => resetFq(actor).catch((e) => console.warn(`${MOD} | use-limits rest`, e)));
   const fail = (e) => { console.warn(`${MOD} | use-limits wrap`, e); if (game.user?.isGM) ui.notifications.warn(L("builtin.wrapFailed", { what: "use-limits", error: e?.message ?? e })); };
   try {
     wrapEphemeral(game.actors);

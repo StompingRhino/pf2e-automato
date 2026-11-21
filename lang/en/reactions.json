@@ -15,6 +15,12 @@
         "failure": "miss",
         "success": "hit",
         "criticalSuccess": "critical hit"
+      },
+      "leave": {
+        "hint": "<p><b>Foe moving away</b>: {source} is trying to move out of {holder}'s reach. Reaction: @UUID[{item}]. The player moves the token themselves.</p>",
+        "button": "Use reaction",
+        "cannot": "No permission for this actor, or the item is gone.",
+        "blocked": "\"{name}\" can't be used right now (reaction spent, not raging, etc.)."
       }
     }
   }

@@ -31,6 +31,9 @@ test("catalog.pa: ручные каталоги побеждают при скл
 // Calm: ошибочная запись pa перекрыта в catalog.json (l3, кусок 1) до перегенерации pa-port — тогда ключи из pa уйдут сами
 const PA_OVERRIDDEN = new Set(["Compendium.pf2e.spells-srd.Item.b515AZlB0sridKSq", "calm", "calm-emotions",
   "Compendium.pf2e.feats-srd.Item.YKqMuuC8j35NFh92", "tumble-behind-rogue", "tumble-behind",
+  // sustain:true поверх записей pa (plan-rustyspirit-gaps §4, tests/catalog.rustyspirit-gaps.test.mjs)
+  "Compendium.pf2e.spells-srd.Item.DH9Y3RQGWO0GzXGU", "Compendium.pf2e.spells-srd.Item.tlSE7Ly8vi1Dgddv", "Compendium.pf2e.spells-srd.Item.xEjGEBvTfDJECSki", "Compendium.pf2e.spells-srd.Item.zhqnMOVPzVvWSUbC",
+  "hideous-laughter", "laughing-fit",
   "Compendium.pf2e.spells-srd.Item.f45JpY7Ph2cAJGW2",   // Evil Eye: pa + минимум-эффект и sustain (docs/plan-hexes.md)
   "Compendium.pf2e.familiar-abilities.Item.ZCze1FY3Rmnvd6Dx"]);   // Restored Spirit: onUse перенесён в catalog.json вместе с onEvent фамильяра (docs/plan-familiar.md)   // Tumble Behind: метка цели в снятии (campaign)
 test("catalog.pa: исключения PA_OVERRIDDEN не устарели (ключ есть в pa)", () => {

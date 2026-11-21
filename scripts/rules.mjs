@@ -2110,6 +2110,17 @@ export function limitEntry(item) {
   return sig === null ? null : vs.find((v) => v.sig === sig) ?? null;
 }
 
+/** Частота из текста способности (оверлей rules/use-limits.json, ключ freq): {value, unit, uses?} | null. Выбор записи — как у limitEntry (uuid источника, затем "slug@тип" + подпись). */
+export function freqEntry(item) {
+  const t = overlays.limits?.freq;
+  if (!t) return null;
+  const src = lookupSourceOf(item);
+  if (src && t.bySource?.[src]) return t.bySource[src];
+  const slug = slugOf(null, item), vs = slug && item?.type === "action" ? t.bySlug?.[slugTypeKey(slug, item.type)] : null;
+  const sig = vs ? reqSig(item.system?.description?.value) : null;
+  return sig === null ? null : vs.find((v) => v.sig === sig)?.freq ?? null;
+}
+
 /** Пассивка эффекта Удара срабатывает только при крит. попадании: оверлей rules/crit-only.json (tools/crit-only.mjs), счёт по английскому тексту при сборке — описание в мире может быть русским.
  *  Сначала по uuid источника (у предметов NPC выведенный), затем по "slug@тип" (все одноимённые согласны). Нет оверлея или записи — эффект на каждое попадание. */
 export function critOnlyEntry(item) {

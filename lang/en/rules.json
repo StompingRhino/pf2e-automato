@@ -1,5 +1,6 @@
 {
   "PF2E_AUTOMATO": {
+    "choose": { "opt": { "pest": "Pest Form", "animal": "Animal Form", "elemental": "Elemental Form" } },
     "rules": {
       "err": {
         "notObj": "This block is filled in incorrectly ({path})",

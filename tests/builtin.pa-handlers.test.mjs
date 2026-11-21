@@ -113,6 +113,14 @@ test("ярость: требования, Вспыльчивость, конце
   assert.equal(br(["concentrate", "emotion"], "rage", "self-effect"), false);         // сама Ярость — требования
   assert.equal(br(["concentrate"], "x", "damage-roll"), false);                       // бросок, не использование
   assert.equal(br(["attack"], "strike", undefined), false);
+  const bx = (traits, slug, extra) => rage.breaksRage({ traits, slug, ...extra });
+  assert.equal(bx(["impulse", "earth"], "x", { instinctEls: ["earth"] }), false);   // Elemental Instinct: стихия инстинкта
+  assert.equal(bx(["impulse", "air"], "x", { instinctEls: ["earth"] }), true);
+  assert.equal(bx(["impulse"], "elemental-blast", {}), false);                      // стихия неизвестна
+  assert.equal(bx(["concentrate"], "demoralize", { rageSlugs: ["demoralize"] }), false);   // Raging Intimidation
+  assert.equal(bx(["concentrate"], "soul-blessing", {}), false);
+  assert.equal(bx(["concentrate"], "x", { clarity: true }), false);                 // Moment of Clarity
+  assert.equal(bx(["concentrate"], "fear", { repertoire: true }), false);           // Bloodrager Dedication
 });
 
 test("добыча NPC: переключатель на способности без selfEffect; у PC (selfEffect) и без переключателя — нет", () => {

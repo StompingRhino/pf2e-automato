@@ -7,8 +7,17 @@ import { gapFeet } from "../aura.mjs";
 import { esc, whisper, cardButton, settleButtons } from "./lib.mjs";
 import { isHit, meleeCandidates, askStrikes, rollStrike, rollDamage } from "./strikes.mjs";
 import { unchecked } from "./melee-reach.mjs";
+import { whyNot } from "./impulse-gate.mjs";
+import { preyUuids } from "./prey-share.mjs";
+import { raging } from "./limit-text.mjs";
 
 export const SLUG = "reactive-strike";
+// Реакции «враг уходит из досягаемости»: вид (follow — Шаг вслед, check — проверка Атлетики, grab — захват), prey — только по добыче, adj — враг смежный, hand — нужна свободная рука.
+export const LEAVE = {
+  "no-escape": { kind: "follow" }, "deadly-pursuit": { kind: "follow" }, "reactive-pursuit": { kind: "follow", adj: true },
+  "keep-pace": { kind: "follow", prey: true }, "assassins-pursuit": { kind: "follow", prey: true }, "relentless-stalker": { kind: "follow", prey: true, adj: true },
+  "interrupt-charge": { kind: "check", hand: true }, "graveknight-clutching-armor": { kind: "grab" }
+};
 const STRIKE_SLUGS = new Set([SLUG, "attack-of-opportunity"]);
 const OLD_TRAINING = "Старая выучка";   // ponytail: у способности Курмул нет slug и источника — узнаём по имени (или флагу builtin)
 
@@ -28,6 +37,7 @@ export const opposed = (a, b) => !!a && !!b && (a > 0) !== (b > 0);
 export function reactionOf(item) {
   if (!item || item.type === "effect") return null;
   if (STRIKE_SLUGS.has(item.slug)) return "strike";
+  if (LEAVE[item.slug]) return LEAVE[item.slug].kind;
   if (item.name === OLD_TRAINING || item.flags?.[MOD]?.builtin === "old-training") return "oldTraining";
   return null;
 }
@@ -45,6 +55,47 @@ export { gapFeet };   // общая с аурами владельца (scripts/
 
 /** Чистая: клетки, которые существо покинуло за перемещение (начало и промежуточные точки; конечная — нет). */
 export const leftSquares = (origin, waypoints) => [origin, ...waypoints.slice(0, -1)].filter(Boolean);
+
+/** Чистая: существо ушло из досягаемости — какая-то покинутая клетка в досягаемости (adj — смежная, ≤ unit), конечная нет. Шаг на 5 фт считается. */
+export function leaveTrigger(holder, squares, dest, reach, unit, adj = false) {
+  return gapFeet(holder, dest, unit) > reach && squares.some((s) => gapFeet(holder, s, unit) <= (adj ? Math.min(reach, unit) : reach));
+}
+
+/** Чистая: что мешает подсказке «уходит» по предмету (нет добычи, нет руки, ярость), иначе null. */
+export function leaveBlock(item, spec, { rage, prey, handsFree }) {
+  if (item.system?.traits?.value?.includes("rage") && !rage) return "rage";
+  if (spec.prey && !prey) return "prey";
+  if (spec.hand && handsFree === 0) return "hand";
+  return null;
+}
+
+const leaveHint = (holder, src, item) => whisper(holder.actor,
+  L("reactions.leave.hint", { holder: esc(holder.actor.name), source: esc(src.name), item: item.uuid }),
+  "reactive-strike", { strike: { actor: holder.actor.uuid, item: item.uuid } },
+  cardButton("data-af-react-leave", L("reactions.leave.button")));
+
+/** Держатели реакций «уходит»: враг покинул досягаемость — подсказка с кнопкой карточки реакции. Перемещение игрок делает сам. */
+async function onLeave(doc, mover, movement, squares, rect) {
+  const unit = canvas.grid.distance, g = canvas.grid.size;
+  const last = (movement.passed?.waypoints ?? []).at(-1) ?? doc;
+  const dest = rect(last);
+  for (const holder of canvas.tokens.placeables) {
+    const actor = holder.actor;
+    if (!actor || holder === mover || !(actor.hitPoints?.value > 0) || noReactions(actor) || !opposed(holder.document.disposition, doc.disposition)) continue;
+    const reach = actor.getReach?.({ action: "attack" }) ?? unit;
+    const h = { x: holder.document.x / g, y: holder.document.y / g, w: holder.document.width, h: holder.document.height };
+    for (const item of actor.items) {
+      const spec = LEAVE[item.slug];
+      if (!spec || item.type === "effect" || !leaveTrigger(h, squares, dest, reach, unit, spec.adj)) continue;
+      const ctx = { rage: raging(actor), prey: preyUuids(actor.itemTypes.effect).includes(doc.uuid), handsFree: actor.system?.hands?.free?.value };
+      if (leaveBlock(item, spec, ctx) || whyNot(actor, item)) continue;
+      const key = `${movement.id}:${holder.id}:${item.id}`;
+      if (seenMoves.has(key)) continue;
+      seenMoves.add(key); setTimeout(() => seenMoves.delete(key), 60000);
+      await leaveHint(holder, mover, item);
+    }
+  }
+}
 
 const MOVE_METHODS = new Set(["dragging", "keyboard", "api"]);   // config/paste/undo — правка ГМа, не перемещение существа
 const seenMoves = new Set();
@@ -71,6 +122,7 @@ export async function onMove(doc, movement) {
     seenMoves.add(key); setTimeout(() => seenMoves.delete(key), 60000);
     await hint(holder, mover, item, L(step ? "builtin.reactive.moveStep" : "builtin.reactive.move"));
   }
+  await onLeave(doc, mover, movement, squares, rect);
 }
 
 export async function onMessage(message) {
@@ -104,8 +156,26 @@ export async function onMessage(message) {
   }
 }
 
+/** Кнопка «Использовать реакцию» (подсказка «уходит»): карточка предмета штатным путём — без unchecked, строки лимитов сами отметят реакцию. */
+export function bindLeave(message, html) {
+  const data = message.flags?.[MOD]?.strike;
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  const btn = root?.querySelector?.("[data-af-react-leave]");
+  if (!data || !btn) return;
+  if (data.used) return void settleButtons([btn], "used");
+  btn.addEventListener("click", async () => {
+    const actor = await fromUuid(data.actor), item = await fromUuid(data.item);
+    if (!actor?.isOwner || !item) return void ui.notifications.warn(L("reactions.leave.cannot"));
+    if (whyNot(actor, item)) return void ui.notifications.warn(L("reactions.leave.blocked", { name: item.name }));
+    btn.disabled = true;
+    await (game.user.isGM ? message.setFlag(MOD, "strike.used", true) : callGM("markStrikeUsed", message.id));
+    await item.toMessage();
+  });
+}
+
 /** Кнопка «Ударить» (у владельца актёра): Удар ближнего боя по спровоцировавшему, при попадании — урон. */
 export function bindStrike(message, html) {
+  bindLeave(message, html);   // index.mjs вешает только bindStrike — кнопка «уходит» привязывается тем же хуком
   const data = message.flags?.[MOD]?.strike;
   const root = html instanceof HTMLElement ? html : html?.[0];
   const btn = root?.querySelector?.("[data-af-react-strike]");

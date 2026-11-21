@@ -180,3 +180,39 @@ export function reqSig(html) {
   const m = /^\s*(?:<p>\s*)+<strong>[^<]*<\/strong>([^]*?)(?:<\/p>|$)/i.exec(String(html ?? ""));
   return m ? [...m[1].matchAll(/@UUID\[[^\]]*conditionitems\.Item\.(\w+)\]/g)].map((x) => x[1]).join(",") : null;
 }
+
+/* ---------- ярость, пространство ---------- */
+
+export const RAGE_SLUG = "effect-rage";
+export const STARTERS = new Set(["rage", "quick-tempered"]);
+const ELEMENTS = ["air", "earth", "fire", "metal", "water", "wood"];
+// слуги действий, которые в ярости получают черту rage (Seek — разрешён текстом Ярости; Soul Blessing — «While under the effect of Rage … gains the rage trait»)
+const RAGE_OK = new Set(["seek", "soul-blessing", "golden-souled-yang-na", ...STARTERS]);
+
+/** Чистая: предмет — эффект «Ярость». */
+export const isRage = (item) => item?.type === "effect" && item.slug === RAGE_SLUG;
+/** Чистая: актёр в ярости (эффект Ярость среди эффектов). */
+export const raging = (actor) => !!actor?.itemTypes?.effect.some(isRage);
+
+/**
+ * Чистая: использование нарушает ярость — «концентрация» без черты «ярость». Концентрация — черта concentrate или импульс с чертой стихии
+ * (PF2E.TraitDescriptionImpulse: у импульса она есть, «unless another ability changes this»); импульс без черты стихии (Elemental Blast и др.) — стихия неизвестна, не блокируем.
+ * Не нарушают: черта rage, Seek/Rage/Quick Tempered/Soul Blessing, rageSlugs (Raging Intimidation: Demoralize, Scare to Death), clarity (Moment of Clarity),
+ * repertoire (Bloodrager Dedication: заклинания репертуара в ярости получают rage), импульс стихии инстинкта (instinctEls, Elemental Instinct — даже с concentrate).
+ * Тип сообщения не проверяем: вызывающий уже отобрал использования (isUseCard или rage.mjs USE_TYPES).
+ */
+export function breaksRage({ traits, slug, instinctEls = [], clarity = false, rageSlugs = [], repertoire = false }) {
+  if (traits.includes("rage") || RAGE_OK.has(slug) || rageSlugs.includes(slug) || clarity || repertoire) return false;
+  const impulse = traits.includes("impulse"), els = traits.filter((t) => ELEMENTS.includes(t));
+  if (impulse && els.some((e) => instinctEls.includes(e))) return false;
+  return traits.includes("concentrate") || (impulse && els.length > 0);
+}
+
+/** Чистая: стихии инстинкта — из опций броска актёра («elemental-instinct:earth»), иначе из выбора ChoiceSet самого предмета (rulesSelections). */
+export function instinctElements(options, selections = []) {
+  const fromOpts = (options ?? []).map((o) => /^elemental-instinct:(\w+)$/.exec(o)?.[1]).filter((e) => ELEMENTS.includes(e));
+  return fromOpts.length ? fromOpts : selections.filter((e) => ELEMENTS.includes(e));
+}
+
+/** Чистая: пересечение прямоугольников в клетках {x,y,w,h}: общая клетка есть (соседние — нет). */
+export const cellsOverlap = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;

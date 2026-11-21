@@ -380,3 +380,48 @@ test("rcButtonState: одна карточка — один бросок; мет
   assert.equal(rcButtonState({ ...base, fresh: true, flags: { rc_a: { c: "c", until: 2 } } }).reason, "rolled", "ключ на актёре уже есть — метка не нужна");
   assert.equal(rcButtonState({ ...base, last: false }).reason, "rolled", "старая карточка с броском — «брошено»");
 });
+
+test("breaksRage: concentrate и импульс со стихией без rage — нарушение; исключения — одна функция", async () => {
+  const { breaksRage, instinctElements, cellsOverlap, raging } = await import("../scripts/builtin/limit-text.mjs");
+  assert.equal(breaksRage({ traits: ["concentrate"], slug: "x" }), true);
+  assert.equal(breaksRage({ traits: ["impulse", "water"], slug: "x" }), true);
+  assert.equal(breaksRage({ traits: ["impulse"], slug: "elemental-blast" }), false, "импульс без стихии — не знаем");
+  assert.equal(breaksRage({ traits: ["impulse", "earth", "concentrate"], slug: "x", instinctEls: ["earth"] }), false);
+  assert.equal(breaksRage({ traits: ["impulse", "air"], slug: "x", instinctEls: ["earth"] }), true);
+  assert.equal(breaksRage({ traits: ["concentrate", "rage"], slug: "x" }), false);
+  assert.equal(breaksRage({ traits: ["concentrate"], slug: "seek" }), false);
+  assert.equal(breaksRage({ traits: ["concentrate"], slug: "soul-blessing" }), false);
+  assert.equal(breaksRage({ traits: ["concentrate"], slug: "demoralize", rageSlugs: ["demoralize"] }), false);
+  assert.equal(breaksRage({ traits: ["concentrate"], slug: "demoralize" }), true);
+  assert.equal(breaksRage({ traits: ["concentrate"], slug: "x", clarity: true }), false);
+  assert.equal(breaksRage({ traits: ["concentrate"], slug: "x", repertoire: true }), false);
+  assert.equal(breaksRage({ traits: ["attack"], slug: "x" }), false);
+  assert.deepEqual(instinctElements(["a", "elemental-instinct:earth", "elemental-instinct:bad"]), ["earth"]);
+  assert.deepEqual(instinctElements([], ["fire", "x"]), ["fire"]);
+  assert.equal(raging({ itemTypes: { effect: [{ type: "effect", slug: "effect-rage" }] } }), true);
+  assert.equal(raging({ itemTypes: { effect: [{ type: "effect", slug: "other" }] } }), false);
+  assert.equal(raging(null), false);
+  const t = (x, y, w = 1, h = 1) => ({ x, y, w, h });
+  assert.equal(cellsOverlap(t(2, 2), t(2, 2)), true);
+  assert.equal(cellsOverlap(t(2, 2), t(3, 2)), false, "соседние клетки");
+  assert.equal(cellsOverlap(t(2, 2, 2, 2), t(3, 3)), true, "крупный токен перекрывает");
+  assert.equal(cellsOverlap(t(2, 2, 2, 2), t(4, 2)), false);
+});
+
+test("freqOf / buildLimits.freq: Frequency из текста при пустом system.frequency; проза фамильяров; не разобрано и своя частота — нет", async () => {
+  const { freqOf } = await import("../tools/use-limits.mjs");
+  const act = (descEn, o = {}) => ({ type: "action", actionType: "free", frequency: null, pack: "feats-srd", descEn, ...o });
+  assert.deepEqual(freqOf(act("Frequency once per day\nTrigger x\n---\nEffect y")), { value: 1, unit: "days" });
+  assert.deepEqual(freqOf(act("Frequency twice per hour\nEffect y")), { value: 1, unit: "hours", uses: 2 });
+  assert.deepEqual(freqOf(act("Frequency once per 10 minutes\nEffect y")), { value: 10, unit: "minutes" });
+  assert.equal(freqOf(act("Frequency once per season\nEffect y")), null);
+  assert.equal(freqOf(act("Frequency until recharged\nEffect y")), null);
+  assert.equal(freqOf(act("Frequency once per day\nEffect y", { frequency: { max: 1, per: "day" } })), null);
+  assert.equal(freqOf(act("Frequency once per day\nEffect y", { actionType: "passive" })), null);
+  const fam = { type: "action", actionType: "passive", frequency: null, pack: "familiar-abilities" };
+  assert.deepEqual(freqOf({ ...fam, descEn: "Once per day, your familiar can use 2 actions to heal you." }), { value: 1, unit: "days" });
+  assert.equal(freqOf({ ...fam, descEn: "Your familiar can heal you." }), null);
+  const out = buildLimits([{ ...act("Frequency once per day\nEffect y"), uuid: "U1", slug: "s1" }], { U1: "<p><strong>Frequency</strong> once per day</p><hr />" });
+  assert.deepEqual(out.freq.bySource, { U1: { value: 1, unit: "days" } });
+  assert.deepEqual(out.freq.bySlug["s1@action"].map((v) => v.freq), [{ value: 1, unit: "days" }]);
+});

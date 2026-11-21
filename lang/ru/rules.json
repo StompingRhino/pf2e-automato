@@ -1,5 +1,6 @@
 {
   "PF2E_AUTOMATO": {
+    "choose": { "opt": { "pest": "Форма зверька", "animal": "Форма животного", "elemental": "Форма элементаля" } },
     "rules": {
       "err": {
         "notObj": "Блок заполнен неверно ({path})",

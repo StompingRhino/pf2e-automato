@@ -239,3 +239,32 @@ test("Реагирующий удар по перемещению: рассто�
   assert.deepEqual(rs.leftSquares("o", ["a", "b", "end"]), ["o", "a", "b"]);
   assert.deepEqual(rs.leftSquares("o", ["end"]), ["o"]);
 });
+
+/* ---------- К2: «враг уходит из досягаемости» ---------- */
+
+test("reactionOf: реакции «враг уходит» — 8 слагов по видам, чужие — null", () => {
+  const kinds = { "no-escape": "follow", "keep-pace": "follow", "reactive-pursuit": "follow", "relentless-stalker": "follow", "assassins-pursuit": "follow", "deadly-pursuit": "follow", "interrupt-charge": "check", "graveknight-clutching-armor": "grab" };
+  for (const [slug, kind] of Object.entries(kinds)) assert.equal(rs.reactionOf({ slug, type: "action" }), kind, slug);
+  assert.equal(rs.reactionOf({ slug: "no-escape", type: "effect" }), null);
+  assert.equal(rs.reactionOf({ slug: "tail-sweep", type: "action" }), null);
+});
+
+test("leaveTrigger: ушёл — да; движение внутри досягаемости — нет; Шаг на 5 фт считается; adj — только смежные клетки", () => {
+  const h = { x: 0, y: 0, w: 1, h: 1 }, sq = (x, y) => ({ x, y, w: 1, h: 1 });
+  assert.equal(rs.leaveTrigger(h, [sq(1, 0)], sq(4, 0), 5, 5), true);
+  assert.equal(rs.leaveTrigger(h, [sq(1, 0)], sq(1, 1), 5, 5), false);   // остался смежным
+  assert.equal(rs.leaveTrigger(h, [sq(1, 0)], sq(2, 0), 5, 5), true);    // Шаг 5 фт из смежной — ушёл
+  assert.equal(rs.leaveTrigger(h, [sq(3, 0)], sq(4, 0), 5, 5), false);   // стартовал вне досягаемости
+  assert.equal(rs.leaveTrigger(h, [sq(2, 0)], sq(5, 0), 10, 5), true);   // досягаемость 10 фт
+  assert.equal(rs.leaveTrigger(h, [sq(2, 0)], sq(5, 0), 10, 5, true), false);   // adj: клетка в 10 фт не смежная
+});
+
+test("leaveBlock: rage-предмет только в ярости; добыча; свободная рука", () => {
+  const rage = { system: { traits: { value: ["barbarian", "rage"] } } }, plain = { system: { traits: { value: [] } } };
+  assert.equal(rs.leaveBlock(rage, rs.LEAVE["no-escape"], { rage: false }), "rage");
+  assert.equal(rs.leaveBlock(rage, rs.LEAVE["no-escape"], { rage: true }), null);
+  assert.equal(rs.leaveBlock(plain, rs.LEAVE["assassins-pursuit"], { prey: false }), "prey");
+  assert.equal(rs.leaveBlock(plain, rs.LEAVE["assassins-pursuit"], { prey: true }), null);
+  assert.equal(rs.leaveBlock(plain, rs.LEAVE["interrupt-charge"], { handsFree: 0 }), "hand");
+  assert.equal(rs.leaveBlock(plain, rs.LEAVE["interrupt-charge"], { handsFree: undefined }), null);   // у NPC рук нет в данных — не блокируем
+});

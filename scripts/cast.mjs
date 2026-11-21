@@ -19,7 +19,8 @@ export const highDc = (level) => HIGH_DC[Math.min(Math.max(Math.trunc(level) || 
 export const highAttack = (level) => highDc(level) - 8;
 
 /** Ведём ли собственный счётчик частоты: нет у способности со своей частотой pf2e (только показываем) и у «раз в день» для NPC (restForTheNight только у character; «раз в N дней» закрывает время мира). */
-export const tracksUses = (item, per) => !!per && !item?.system?.frequency && (item?.actor?.type === "character" || per.unit !== "days" || multiDay(per));
+export const tracksFor = (actorType, per) => !!per && (actorType === "character" || per.unit !== "days" || multiDay(per));
+export const tracksUses = (item, per) => !item?.system?.frequency && tracksFor(item?.actor?.type, per);
 
 /**
  * Источник заклинания с рангом и записью заклинателя (как createConsumableFromSpell, pf2e:39893): явный ранг — heightenedLevel не ниже базового;
@@ -213,7 +214,7 @@ function install() {
 
 /* ---------- окружение ---------- */
 
-const clock = (actor) => { const c = actor ? combatOf(game.combats, actor) : game.combat; return { time: game.time.worldTime, combat: c?.id ?? null, round: c?.round ?? 0 }; };   // бой актёра — как у лимитов реакций (builtin/lib.combatOf)
+export const clock = (actor) => { const c = actor ? combatOf(game.combats, actor) : game.combat; return { time: game.time.worldTime, combat: c?.id ?? null, round: c?.round ?? 0 }; };   // бой актёра — как у лимитов реакций (builtin/lib.combatOf)
 const usesOf = (item, id) => item?.flags?.[MOD]?.uses?.[id];
 
 // заклинания точно нет: пака с таким id нет в мире либо его индекс загружен и не содержит документа (индекс не загружен — неизвестно, проверит castItem)

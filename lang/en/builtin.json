@@ -107,7 +107,19 @@
         "needStrikeSpecial": "your last action must be a successful Strike with a special effect",
         "needHolds": "you have a creature Grabbed or Restrained",
         "needHand": "you need a free hand",
-        "frequency": "{name}: no uses left (frequency exhausted). Reset it by hand on the sheet or wait for it to recharge. Alt-click to use anyway."
+        "frequency": "{name}: no uses left (frequency exhausted). Reset it by hand on the sheet or wait for it to recharge. Alt-click to use anyway.",
+        "flourish": "{name}: you already used an action with the \"{trait}\" trait this round — only one per round. Alt-click to use anyway.",
+        "rage": "{name}: while raging you can't use actions with the \"{concentrate}\" trait unless they also have the \"{rage}\" trait (impulses too, except your instinct's element). Alt-click to use anyway.",
+        "rageTrait": "{name}: an ability with the \"{rage}\" trait can only be used while raging. Alt-click to use anyway.",
+        "freqText": "{name}: no uses left — by its text at most {uses} per {n} {unit} (tracked by the module). Alt-click to use anyway.",
+        "freqUnit": {
+          "rounds": { "one": "round", "few": "rounds", "many": "rounds", "other": "rounds" },
+          "minutes": { "one": "minute", "few": "minutes", "many": "minutes", "other": "minutes" },
+          "hours": { "one": "hour", "few": "hours", "many": "hours", "other": "hours" },
+          "days": { "one": "day", "few": "days", "many": "days", "other": "days" }
+        },
+        "inSpace": "{name}: the familiar must be in your space (on the master's square). Alt-click to use anyway.",
+        "twoHands": "{name}: two targets need two free hands — pick one target or free a hand. Alt-click to use anyway."
       },
       "automationsConflict": "PF2e AuTOMATO is incompatible with pf2e-automations: everything it automates is already in AuTOMATO, and together they process items twice (double damage and effects). Disable pf2e-automations in Manage Modules.",
       "wrapFailed": "pf2e-automato: the «{what}» check is not installed (conflict with another module: {error}). The restriction is off.",

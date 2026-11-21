@@ -5,19 +5,17 @@
 // - второй эффект ярости не создаётся (кнопка pf2e «Применить» на карточке после автоприменения);
 // - инициатива с «Вспыльчивостью» — шёпот с кнопкой (свободное действие по желанию игрока);
 // - конец ярости: потеря сознания и конец боя (минуту отсчитывает pf2e);
-// - действие с «концентрацией» без «ярости» в ярости (кроме Поиска) — шёпот-предупреждение.
+// - действие с «концентрацией» без «ярости» в ярости: карточку использования блокирует impulse-gate (строка LIMITS «rage», общий код — limit-text.mjs); здесь — шёпот только там, где карточки нет (проверка навыка/Восприятия).
 import { L, MOD, queue } from "../util.mjs";
 import { addEffect, cardButton, esc, paHas, whisper } from "./lib.mjs";
+import { RAGE_SLUG, STARTERS, isRage, raging, breaksRage as breaksRageAny } from "./limit-text.mjs";
+import { isUseCard, rageExtras } from "./impulse-gate.mjs";
 
-export const RAGE_SLUG = "effect-rage", KEY = "rage-immunity";
+export { RAGE_SLUG, isRage };
+export const KEY = "rage-immunity";
 export const IMMUNITY = "Compendium.pf2e.feat-effects.Item.MaepXeSHiMoWDm7u";
 export const RAGE = "Compendium.pf2e.feat-effects.Item.z3uyCMBddrPK5umr";
-const STARTERS = new Set(["rage", "quick-tempered"]);
 const USE_TYPES = new Set([undefined, "self-effect", "spell-cast", "skill-check", "perception-check"]);   // использование, не бросок атаки/урона
-
-/** Чистая: удалённый предмет — эффект «Ярость». */
-export const isRage = (item) => item?.type === "effect" && item.slug === RAGE_SLUG;
-const raging = (actor) => !!actor?.itemTypes?.effect.some(isRage);
 
 /** Чистая: почему нельзя впасть в ярость -> "raging" | "fatigued" | null. */
 export const blockedBy = ({ raging, fatigued }) => (raging ? "raging" : fatigued ? "fatigued" : null);
@@ -25,8 +23,8 @@ export const blockedBy = ({ raging, fatigued }) => (raging ? "raging" : fatigued
 /** Чистая: «Вспыльчивость» доступна при инициативе — не нагружен и без тяжёлой брони (или «Неуязвимый яростный»), как Note pf2e. */
 export const quickTempered = ({ encumbered, heavy, invulnerable }) => !encumbered && (!heavy || invulnerable);
 
-/** Чистая: использование нарушает ярость — «концентрация» без «ярости»; Поиск разрешён, сама Ярость проверяется требованиями. */
-export const breaksRage = ({ type, traits, slug }) => USE_TYPES.has(type) && traits.includes("concentrate") && !traits.includes("rage") && slug !== "seek" && !STARTERS.has(slug);
+/** Чистая: использование (не бросок атаки/урона) нарушает ярость; правила — limit-text.breaksRage. */
+export const breaksRage = (c) => USE_TYPES.has(c.type) && breaksRageAny(c);
 
 const blocked = (actor) => blockedBy({ raging: raging(actor), fatigued: !!actor.hasCondition?.("fatigued") });
 
@@ -96,11 +94,11 @@ export async function onMessage(message) {
     if (!quickTempered({ encumbered: !!actor.hasCondition?.("encumbered"), heavy: actor.wornArmor?.category === "heavy", invulnerable: actor.items.some((i) => i.slug === "invulnerable-rager") })) return;
     return void await whisper(actor, L("builtin.rage.quick", { name: esc(actor.name) }), "rage", {}, cardButton(`data-af-rage="${qt.uuid}"`, L("builtin.rage.button")));
   }
-  if (!raging(actor)) return;
+  if (!raging(actor) || isUseCard(message)) return;   // карточку использования уже блокирует impulse-gate
   const item = message.item, opts = ctx?.options ?? [];
   const traits = [...(item?.system?.traits?.value ?? []), ...(ctx?.traits ?? []).map((t) => t?.name ?? t)];
   const slug = item?.slug ?? opts.find((o) => o.startsWith("action:"))?.slice(7);
-  if (breaksRage({ type: ctx?.type, traits, slug })) await whisper(actor, L("builtin.rage.concentrate", { name: esc(actor.name), what: esc(item?.name ?? game.i18n.localize(game.pf2e?.actions?.get(slug)?.name ?? slug ?? "")) }), "rage");
+  if (breaksRage({ type: ctx?.type, traits, slug, ...rageExtras(actor) })) await whisper(actor, L("builtin.rage.concentrate", { name: esc(actor.name), what: esc(item?.name ?? game.i18n.localize(game.pf2e?.actions?.get(slug)?.name ?? slug ?? "")) }), "rage");
 }
 
 /** Кнопка «Впасть в ярость» в шёпоте: у нажавшего — действие «Вспыльчивость» pf2e (карточка self-effect, эффект вешает ведущий). */

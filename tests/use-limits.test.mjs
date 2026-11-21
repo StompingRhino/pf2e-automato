@@ -313,3 +313,15 @@ test("meleeOf: тип Удара из опций броска; метаемый 
   assert.equal(meleeOf([]), null);
   assert.equal(meleeOf(undefined), null);
 });
+
+test("freqEntry: по uuid источника и по slug с подписью описания; чужая подпись и пустой оверлей — null", async () => {
+  const { freqEntry } = await import("../scripts/rules.mjs");
+  const fq = { value: 1, unit: "days" };
+  initOverlays(null, null, null, { v: 1, freq: { bySource: { "Compendium.pf2e.t.Item.A": fq }, bySlug: { "zap@action": [{ sig: "", freq: { value: 1, unit: "rounds" } }] } } });
+  const item = (o) => ({ type: "action", slug: "zap", system: { description: { value: "<p><strong>Frequency</strong> once per round</p>" } }, ...o });
+  assert.deepEqual(freqEntry(item({ _stats: { compendiumSource: "Compendium.pf2e.t.Item.A" } })), fq);
+  assert.deepEqual(freqEntry(item()), { value: 1, unit: "rounds" });
+  assert.equal(freqEntry(item({ system: { description: { value: "<p>без заголовка</p>" } } })), null);
+  initOverlays(null, null, null, null);
+  assert.equal(freqEntry(item()), null);
+});
