@@ -45,6 +45,7 @@ import * as computed from "./computed-options.mjs";
 import * as turnFlight from "./turn-flight.mjs";
 import * as dualWield from "./dual-wield.mjs";
 import * as npcInvest from "./npc-invest.mjs";
+import * as restRecovery from "./rest-recovery.mjs";
 import * as animations from "./animations.mjs";
 import * as maneuver from "./maneuver.mjs";
 import * as spiritLink from "./spirit-link.mjs";
@@ -149,6 +150,7 @@ export function initBuiltinHooks() {
   Hooks.once("ready", tahInert.init);   // Token Action HUD: «пустые» действия (Стихийный взрыв как действие) неактивны
   Hooks.once("init", () => { neutralize.init(); computed.init(); });   // до подготовки актёров: переключатели вычисляемых опций гасятся, опции подставляются в урон (CLAUDE.md §1.5)
   dualWield.init();   // «по одному в каждой руке»: пункт меню, значок, кость two-hand не растёт
+  restRecovery.init();   // отдых на ночь: «снижайте на 2 вместо 1» (Сонное чадо, Быстрое восстановление)
   npcInvest.init();   // кнопка «Вложено» на листе NPC: pf2e рисует её только персонажу, без вложения правила предмета не работают
   animations.init();   // Атака исподтишка и камни вечных (Sequencer + JB2A) при переводе: распознавание не по английскому тексту; jb2a-macros уступаем
   Hooks.once("ready", meleeReach.install);   // Удар вблизи по цели вне досягаемости — броска нет, как у pf2e с дальним оружием

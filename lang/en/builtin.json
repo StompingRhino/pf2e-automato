@@ -148,6 +148,10 @@
         "guardianLabel": "Devoted Guardian",
         "guardianText": "<b>{name}</b> shields you: a circumstance bonus to AC while the shield is raised."
       },
+      "rest": {
+        "reduced": "<p>{item}: {condition} reduced by 1 more, now {value}.</p>",
+        "removed": "<p>{item}: {condition} removed (reduced by 1 more).</p>"
+      },
       "guard": {
         "card": "<p>{tree} takes {n} damage instead of {name}; {left} HP left.</p>"
       },
