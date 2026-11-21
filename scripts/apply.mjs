@@ -681,7 +681,7 @@ export async function applyOps(message, tokenKey, steps, ctx = {}) {
       origin: use.item?.uuid ?? null, by: guardUuid ?? selfActor?.uuid ?? null
     };
     // привязка к якорю Поддержания автора (sustain.mjs); карточка импульса (state.sustainKey) — только к живому якорю заклинания, после «Прекратить» не воскрешаем
-    if (step.sustain === true && selfActor && (!use.state?.sustainKey || sustain.findAnchor(selfActor, use.state.sustainKey))) { meta.sustainOf = use.state?.sustainKey ?? sustain.anchorKey(message.id); meta.sustainBy = selfActor.uuid; }
+    if (step.sustain === true && selfActor && (!use.state?.sustainKey || sustain.findAnchor(selfActor, use.state.sustainKey))) { meta.sustainOf = use.state?.sustainKey ?? sustain.anchorKey(message.id); meta.sustainBy = selfActor.uuid; if (step.gate) meta.gate = step.gate; }
     if (step.choose) {
       const c = step.choose, prev = doneOps.find((o) => o.op === "chose" && o.key === meta.key);
       let value = prev?.value ?? null, chosen = prev?.actor ? actorOf(await fromUuid(prev.actor)) : null, eff = prev?.effect ? await fromUuid(prev.effect) : null;

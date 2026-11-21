@@ -127,6 +127,11 @@ function vApply(a, path, defTo, err, basicOk = false, castOk = false) {
     if (typeof a.sustain !== "boolean" || kinds.length !== 1 || (a.condition == null && a.effect == null)) err.push(E("apply.sustain", `${path}.sustain`));
     else out.sustain = a.sustain;
   }
+  // gate:"sight" — эффект действует, только пока автор видит получателя (sight-gate.mjs); нужен эффект с привязкой к Поддержанию
+  if (a.gate !== undefined) {
+    if (a.gate !== "sight" || a.effect == null || out.sustain !== true) err.push(E("apply.gate", `${path}.gate`));
+    else out.gate = a.gate;
+  }
   // range — радиус в футах, только у союзников (Живые щиты, Сеятель)
   if (a.range != null) { if (out.to !== "allies" || !(isInt(a.range) && a.range >= 5)) err.push(E("apply.range", `${path}.range`)); else out.range = a.range; }
   else if (out.to === "allies") err.push(E("apply.range", `${path}.range`));

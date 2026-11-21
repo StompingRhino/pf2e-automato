@@ -34,7 +34,7 @@ const STEP_BLANK = { rankMin: "", rankMax: "", stack: false, stackBy: "", stackS
 export const blankRow = () => ({ to: "target", kind: "condition", text: "", value: "", policy: "max", keep: "", ...DUR_BLANK, ...VIS_BLANK, ...PERS_BLANK, ...STEP_BLANK });
 
 // поля шага, которых нет в форме (who/mark/choice/unlessEffect): едут в строке JSON-ом и разворачиваются обратно в applyOf
-const KEEP = ["who", "mark", "choice", "unlessEffect", "escape", "repeat", "sustain"];
+const KEEP = ["who", "mark", "choice", "unlessEffect", "escape", "repeat", "sustain", "gate"];
 const keepOf = (a) => { const k = Object.fromEntries(KEEP.filter((n) => a[n] != null).map((n) => [n, a[n]])); return Object.keys(k).length ? JSON.stringify(k) : ""; };   // dmgBasic — «обычное» испытание у шага damage
 
 /** Строка keep <-> объект. Мастерская правит эти поля через keepGet/keepSet (automation.mjs), вкладка листа несёт строку скрытым полем data-r="keep". */

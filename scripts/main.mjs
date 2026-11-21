@@ -37,6 +37,7 @@ import * as cast from "./cast.mjs";
 import * as migrateActivate from "./migrate-activate.mjs";
 import * as affliction from "./affliction-run.mjs";
 import * as sustain from "./sustain.mjs";
+import * as sightGate from "./sight-gate.mjs";
 import * as summon from "./summon.mjs";
 import { init as initNexus } from "./nexus-tokens.mjs";
 import { init as initFormToken } from "./form-token.mjs";
@@ -146,7 +147,7 @@ Hooks.once("socketlib.ready", () => {
 Hooks.once("setup", () => leader.start());
 
 Hooks.once("init", () => {
-  settings.init(); compat.init(); zone.init(); areaCleanup.init(); height.init(); saves.init(); use.init(); actions.init(); chat.init(); reactions.init(); sheet.init(); badge.init(); vision.init(); invis.init(); workshop.init(); hud.init(); damageGate.init(); damageButton.init(); rechargeButton.init(); turnConditions.init(); escape.init(); events.init(); counterspell.init(); sustain.init(); cast.init(); migrateActivate.init(); affliction.init(); conditionHold.init(); summon.init(); initNexus(); initFormToken();
+  settings.init(); compat.init(); zone.init(); areaCleanup.init(); height.init(); saves.init(); use.init(); actions.init(); chat.init(); reactions.init(); sheet.init(); badge.init(); vision.init(); invis.init(); workshop.init(); hud.init(); damageGate.init(); damageButton.init(); rechargeButton.init(); turnConditions.init(); escape.init(); events.init(); counterspell.init(); sustain.init(); sightGate.init(); cast.init(); migrateActivate.init(); affliction.init(); conditionHold.init(); summon.init(); initNexus(); initFormToken();
   game.modules.get(MOD).api = {
     // контракт plan.md §2 main
     attachZone: zone.attachZone, sweepZone: zone.sweepZone, closeZone: zone.closeZone, expireZones: zone.expireZones,
