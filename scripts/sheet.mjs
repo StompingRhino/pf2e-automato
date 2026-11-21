@@ -248,7 +248,7 @@ function castRule(c) {
 }
 
 /** Форма вкладки листа + то, что на вкладке не правится и едет как было (иначе сохранение потеряет: флаг перекрывает каталог). f — ruleToForm исходного правила. */
-export const carryUneditable = (form, f) => ({ ...form, ev: f.ev, cast: f.cast, pulse: f.pulse, summon: f.summon, range: f.range, dm: form.dm && { ...form.dm, notify: f.dm.notify }, fl: form.fl && { ...form.fl, notify: f.fl.notify } });
+export const carryUneditable = (form, f) => ({ ...form, ev: f.ev, cast: f.cast, pulse: f.pulse, reshape: f.reshape, summon: f.summon, range: f.range, dm: form.dm && { ...form.dm, notify: f.dm.notify }, fl: form.fl && { ...form.fl, notify: f.fl.notify } });
 
 /** notify реакции: массив правила <-> флажки {owner, gm}; пустой выбор уходит валидатору (react.notify). */
 const notifyForm = (n = ["owner", "gm"]) => ({ owner: n.includes("owner"), gm: n.includes("gm") });
@@ -296,7 +296,7 @@ export function ruleToForm(rule) {
     kind: rule?.onDamaged ? "onDamaged" : rule?.onFailed ? "onFailed" : u ? "onUse" : r ? "onAttacked" : rule?.onEvent?.length ? "onEvent" : rule?.activate?.length ? "cast" : "none",
     ev: (rule?.onEvent ?? []).map(evForm), cast: (rule?.activate ?? []).map(castForm),
     dm: dmForm(rule?.onDamaged), fl: flForm(rule?.onFailed),
-    useOn: !!u, targets: u?.targets ?? "self", excludeSelf: tri(u?.excludeSelf), pulse: u?.pulse ?? "", summon: u?.summon ?? null, range: u?.range ?? null,   // summon (призыв-объект) едет как есть; range — дальность (оверлей/правило), в форме не редактируется, правка правила её не теряет
+    useOn: !!u, targets: u?.targets ?? "self", excludeSelf: tri(u?.excludeSelf), pulse: u?.pulse ?? "", reshape: u?.reshape === true, summon: u?.summon ?? null, range: u?.range ?? null,   // summon (призыв-объект) едет как есть; range — дальность (оверлей/правило), в форме не редактируется, правка правила её не теряет
     zone: { on: !!z, cond: z?.condition?.slug ?? "", condValue: z?.condition?.value ?? "", effect: z?.effect?.uuid ?? "", seconds: z?.duration?.seconds ?? "", rounds: z?.duration?.rounds ?? "", until: z?.duration?.until ?? "", sustainMax: z?.duration?.sustainMax ?? "", noFollow: z?.follow === false, enterBy: z?.enterBy ?? "end", gone: z?.onCarrierGone ?? "close", trig: (z?.triggers ?? []).map(trgForm) },
     ch: {
       on: !!c, statistic: c?.statistic ?? "reflex",
@@ -328,6 +328,7 @@ export function formToRule(f) {
   if (f.kind === "onUse" || reacts) {
     const u = { targets: f.targets, excludeSelf: untri(f.excludeSelf), zone: null, challenge: null, apply: (f.apply ?? []).map(applyOf).filter(Boolean) };
     if (f.pulse && f.targets !== "self") u.pulse = f.pulse;
+    if (f.reshape && f.targets === "self") u.reshape = true;
     if (f.range) u.range = f.range;
     if (f.summon) u.summon = f.summon;
     const z = f.zone ?? {};

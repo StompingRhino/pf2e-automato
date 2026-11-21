@@ -269,7 +269,11 @@ export async function dealDamage(actor, spec, vars = {}, token = null, degree = 
 const BASIC_MULT = [2, 1, 0.5, 0];
 
 /** Подпись варианта choose: своя (label) -> перевод модуля choose.opt.<value> -> код. */
-const optionLabel = (o) => o.label ?? (game.i18n?.has?.(`PF2E_AUTOMATO.choose.opt.${o.value}`) ? L(`choose.opt.${o.value}`) : o.value);
+const optionLabel = (o) => o.label ?? (globalThis.game?.i18n?.has?.(`PF2E_AUTOMATO.choose.opt.${o.value}`) ? L(`choose.opt.${o.value}`) : o.value);
+/** Варианты шага choose {from:"options"} после фильтра `when` (wset — опции для предиката): [{value, label}]. Общая для окна выбора и «Изменить выбор» при Поддержании. */
+export const optionsOf = (choose, wset) => (choose?.options ?? []).filter((o) => !o.when || whenPasses(o.when, wset)).map((o) => ({ value: o.value, label: optionLabel(o) }));
+/** Чистая: у эффекта есть ChoiceSet без готового выбора — внутри формы выбирается ещё что-то (Animal Form). */
+export const hasOwnChoice = (effectSource) => (effectSource?.system?.rules ?? []).some((r) => r.key === "ChoiceSet" && r.selection == null);
 
 /** Игрок онлайн, владеющий актёром: ему показываем окна выбора, когда у сообщения нет автора (событие onEvent). */
 export const ownerPlayer = (actor) => globalThis.game?.users?.find?.((u) => !u.isGM && u.active && actor?.testUserPermission?.(u, "OWNER")) ?? null;
@@ -436,6 +440,12 @@ export async function whenOptions({ use, message, selfActor, targetDoc, originIt
     set.add(`self:held:${kind}`);
     for (const t of w.system.traits?.value ?? []) set.add(`self:held:${kind}:trait:${t}`);
   }
+  // круг сотворения: опции предмета — круг заклинания с листа (1), а сотворено может быть выше; `when` по кругу видит круг сотворения
+  const rank = message.flags?.pf2e?.origin?.castRank;
+  if (originItem?.type === "spell" && Number.isFinite(rank)) {
+    for (const o of [...set]) if (/^(origin:)?item:rank:\d+$/.test(o)) set.delete(o);
+    set.add(`item:rank:${rank}`); set.add(`origin:item:rank:${rank}`);
+  }
   return set;
 }
 const whenPasses = (when, opts) => (globalThis.game?.pf2e?.Predicate?.test ? game.pf2e.Predicate.test(when, opts) : testPredicate(when, opts));
@@ -556,8 +566,13 @@ const choiceHtml = (prompt, choices) => {
   return `${prompt ? `<p>${esc(prompt)}</p>` : ""}<select name="choice">${choices.map((c, i) => `<option value="${i}">${esc(c.label)}</option>`).join("")}</select>`;
 };
 
-export async function pickChoice({ title, prompt, choices, ms = 0 }) {
+export async function pickChoice(req) {
   if (!game.users.get(this?.socketdata?.userId)?.isGM) return null;
+  return pickHere(req);
+}
+
+/** Окно выбора в этой вкладке (кнопка «Изменить выбор»: выбирает нажавший, не ГМ). -> value | null */
+export async function pickHere({ title, prompt, choices, ms = 0 }) {
   const res = await foundry.applications.api.DialogV2.wait({
     window: { title }, classes: ["paf-dialog"], rejectClose: false,
     content: choiceHtml(prompt, choices),
@@ -689,9 +704,11 @@ export async function applyOps(message, tokenKey, steps, ctx = {}) {
         const title = originItem?.name ?? use.item?.name ?? "";
         if (c.from === "options") {
           const wset = new Set([...(wopts ??= await whenOptions({ use, message, selfActor, targetDoc, originItem, degree: ctx.degree, rollOptions: ctx.rollOptions })), ...picks.opts]);
-          const choices = c.options.filter((o) => !o.when || whenPasses(o.when, wset)).map((o) => ({ value: o.value, label: optionLabel(o) }));
+          const choices = optionsOf(c, wset);
           if (!choices.length) continue;
-          value = choices.length === 1 ? choices[0].value : await askChoice(ectx.chooser, title, c.prompt ?? L("apply.prompt.options"), choices);
+          const pre = use.state?.reshape?.preChoice;   // «Изменить выбор» при Поддержании: значение уже выбрано у нажавшего; не вошло в варианты (ранг сотворения) — отказ
+          value = pre?.index === i ? (choices.some((x) => x.value === pre.value) ? pre.value : null)
+            : choices.length === 1 ? choices[0].value : await askChoice(ectx.chooser, title, c.prompt ?? L("apply.prompt.options"), choices);
         } else if (c.from === "conditions") {
           // эффекты выбранного шагом выше существа, срок которых можно продлить; нет кандидатов — молча, один — без окна
           const list = prolongable(picks.actor).map((x) => ({ value: x.effect.uuid, label: L("apply.effectLeft", { names: x.names, n: x.effect.system.duration.value * ROUNDS_IN[x.effect.system.duration.unit] }), effect: x.effect }));
@@ -831,7 +848,7 @@ export async function applyOps(message, tokenKey, steps, ctx = {}) {
     // первый выполненный шаг sustain:true создаёт якорь на авторе — отдельной операцией журнала (откат последней привязки убирает якорь)
     if (meta.sustainOf && r.op === "created") {
       try {
-        const a = await sustain.attach(selfActor, actor, { key: meta.sustainOf, msg: message.id, item: originItem, token: originToken, at: use.at, create: !use.state?.sustainKey });
+        const a = await sustain.attach(selfActor, actor, { key: meta.sustainOf, msg: message.id, item: originItem, token: originToken, at: use.at, create: !use.state?.sustainKey, castRank: message.flags?.pf2e?.origin?.castRank });
         if (a.created) ops.push({ op: "anchor", item: a.item.uuid, actor: selfActor.uuid, key: meta.sustainOf });
       } catch (e) { console.error(`${MOD} | sustain`, e); }
     }
@@ -894,6 +911,12 @@ export async function undoSpent(o) {
   return true;
 }
 
+/** Смена жива: якорь на месте и каждый созданный ею эффект ещё на актёре. По meta.key, не по uuid: откат следующей смены пересоздаёт эффект с новым uuid. */
+async function reshapeAlive(o) {
+  const a = actorOf(await fromUuid(o.actor));
+  return !!a && !!sustain.findAnchor(a, o.key) && !!o.keys?.length && o.keys.every((k) => findByKey(a, k));
+}
+
 /** Откат записанного в ops: созданное удаляется, поднятое возвращается к prev; затем запись state чистится. Законно снимает удерживаемое (unchecked), в том числе при перебросе (events.undoLog). */
 export const undoOps = (message, tokenKey) => unchecked(() => undoOpsInner(message, tokenKey));
 async function undoOpsInner(message, tokenKey) {
@@ -901,10 +924,18 @@ async function undoOpsInner(message, tokenKey) {
   const places = [["challenge", state.challenge?.applied?.[tokenKey]], ["apply", state.apply?.[tokenKey]]];
   let undone = 0;
   const pruneKeys = new Map();
+  // карточка смены («Изменить выбор»): откат только пока якорь жив и созданное ею на месте — иначе старое воскресло бы на мёртвом якоре; отказ — до любых изменений
+  for (const [, rec] of places) for (const o of rec?.ops ?? []) if (o.op === "reshaped" && !(await reshapeAlive(o))) { notify("sustain.reshape.undoDenied", {}); return { undone: 0 }; }
   for (const [scope, rec] of places) {
     if (!rec) continue;
     for (const o of [...(rec.ops ?? [])].reverse()) {
       if (o.op === "anchor") continue;   // сам якорь убирает prune после цикла: только когда привязок не осталось
+      if (o.op === "reshaped") {   // проверено выше. Созданное смены — по ключу (после отката следующей смены uuid в её created устарел); снимаем до effRemoved, пересоздающего прежнее
+        const a = actorOf(await fromUuid(o.actor));
+        for (const k of o.keys ?? []) { const it = a && findByKey(a, k); if (it) await queue(`actor:${a.uuid}`, () => it.delete({ [MOD]: { undo: true } })); }
+        undone++;
+        continue;
+      }
       if (o.op === "reactionSpent" || o.op === "slotExpended") { if (await undoSpent(o)) undone++; continue; }
       if (o.op === "hold") { if (o.prev) await hold.restore(game.messages.get(o.msg), o.prev); continue; }   // атака снова ждёт: карточку можно применить заново
       if ((o.op === "vis" && o.skipped) || o.op === "chose" || o.op === "damaged" || o.op === "noted" || (o.op === "moved" && o.skipped)) continue;   // выбор отменять нечем; урон pf2e откатывает своей карточкой
@@ -970,6 +1001,12 @@ async function undoOpsInner(message, tokenKey) {
         else if (o.op === "badged") await item.update({ "system.badge.value": o.prev, [`flags.${MOD}.bumped`]: (item.flags?.[MOD]?.bumped ?? []).filter((k) => k !== o.key) });
       });
       undone++;
+    }
+    // откат карточки сотворения после смены: её created уже снят сменой (prune о нём не знает), а op "anchor" мог не записаться (якорь поставил автоякорь сотворения) —
+    // якорь по ключу сообщения; привязанное сменой снимаем и якорь убираем явно
+    {
+      const use = message.flags?.[MOD]?.use, key = sustain.anchorKey(message.id), a = use?.rule?.onUse?.reshape && use.actor ? actorOf(await fromUuid(use.actor)) : null, anchor = a && sustain.findAnchor(a, key);
+      if (anchor) { await removeBound(a, key); await sustain.prune(a, key); }
     }
     for (const [by, key] of pruneKeys.values()) { const a = by ? await fromUuid(by) : null; if (a) await sustain.prune(a, key); }   // откат последней привязки убирает якорь
     pruneKeys.clear();

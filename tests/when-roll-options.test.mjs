@@ -25,3 +25,14 @@ test("when: опции актёра по-прежнему работают у ro
   const o = await whenOptions({ use: { kind: "roll", targets: [] }, message: msg([]), selfActor });
   assert.equal(testPredicate(["feat:sly-disarm"], o), true);
 });
+
+test("when: круг сотворения заменяет круг заклинания с листа (Форма тёмного леса на круге 2)", async () => {
+  const originItem = { type: "spell", getRollOptions: () => ["item:rank:1", "item:trait:polymorph"] };
+  const message = { flags: { pf2e: { origin: { castRank: 2, rollOptions: ["origin:item:rank:1"] } } } };
+  const o = await whenOptions({ use: { kind: "use", targets: [] }, message, originItem });
+  assert.deepEqual([...o].filter((x) => /rank/.test(x)).sort(), ["item:rank:2", "origin:item:rank:2"]);
+  assert.equal(testPredicate([{ gte: ["origin:item:rank", 2] }], o), true);
+  assert.equal(testPredicate([{ gte: ["item:rank", 5] }], o), false);
+  const noCast = await whenOptions({ use: { kind: "use", targets: [] }, message: { flags: {} }, originItem });
+  assert.equal(noCast.has("item:rank:1"), true);   // без castRank — как было
+});

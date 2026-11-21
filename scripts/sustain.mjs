@@ -8,7 +8,7 @@ import { itemDuration, slugOf } from "./rules.mjs";
 import { effectSource, whisper, esc, combatOf } from "./builtin/lib.mjs";
 import { cardButton } from "./card.mjs";
 import { S } from "./settings.mjs";
-import { removeBound, orphaned } from "./apply.mjs";
+import { removeBound, orphaned, pickHere } from "./apply.mjs";
 
 /** Слушатели Поддержания ({anchor, actor, pos}): events.mjs запускает способность фамильяра. count() зовёт их без ожидания — окно выбора не держит очередь якоря. */
 export const sustained = new Set();
@@ -52,7 +52,7 @@ export function isSustainMessage(message) {
 // ponytail: автоякорь фамильяра (events.runFamiliar) и якорь шага sustain:true делят ключ anchorKey(message.id): кто пришёл первым, создаёт якорь и шлёт offer,
 // второй только добавляет привязку. Будущему hex со sustain:true: offer уже ушёл «тихим» текстом; prune по откату шага автоякорь без привязок не снимает.
 /** Якорь по ключу на авторе (идемпотентно по meta.key) + актёр-получатель в список привязок (target null — автоякорь наговора: привязок нет). -> {item, created} */
-export function attach(author, target, { key, msg, item, token, at, pulse, create = true, quiet }) {
+export function attach(author, target, { key, msg, item, token, at, pulse, create = true, quiet, castRank }) {
   return queue(`actor:${author.uuid}`, async () => {
     let anchor = findAnchor(author, key), created = false;
     if (!anchor && create) {
@@ -65,7 +65,7 @@ export function attach(author, target, { key, msg, item, token, at, pulse, creat
       });
       data.system.slug = anchorSlug(item?.slug ?? sluggify(item?.name));
       // message "ev:…" — как у эффектов событий: onItem не гоняет по якорю onEvent effect-created/deleted
-      data.flags = { [MOD]: { meta: { key, source: "sustain", message: "ev:sustain", origin: item?.uuid ?? null, by: author.uuid }, sustain: { msg, src: item?.uuid ?? null, actors: [], last: at ?? posOfActor(author), quiet: quiet ?? (!target && !pulse), ...(pulse && { pulse: true }) } } };   // quiet — для напоминания в начале хода (remind)
+      data.flags = { [MOD]: { meta: { key, source: "sustain", message: "ev:sustain", origin: item?.uuid ?? null, by: author.uuid }, sustain: { msg, src: item?.uuid ?? null, actors: [], last: at ?? posOfActor(author), quiet: quiet ?? (!target && !pulse), ...(pulse && { pulse: true }), ...(castRank != null && { castRank }) } } };   // quiet — для напоминания в начале хода (remind)
       [anchor] = await author.createEmbeddedDocuments("Item", [data]);
       created = !!anchor;
     }
@@ -91,7 +91,7 @@ export function onCast(message) {
   const item = message?.item, author = message?.actor;
   if (!isSustained(item) || !author) return null;
   const hex = !!message.flags?.pf2e?.origin?.rollOptions?.includes?.("origin:item:trait:hex") || !!item.system?.traits?.value?.includes?.("hex");   // черты сотворения (как событие spell-cast), запасной — предмета
-  return attach(author, null, { key: anchorKey(message.id), msg: message.id, item, token: message.token ?? null, quiet: hex });
+  return attach(author, null, { key: anchorKey(message.id), msg: message.id, item, token: message.token ?? null, quiet: hex, castRank: message.flags?.pf2e?.origin?.castRank });
 }
 
 /** Эффекты шагов этого сотворения, не привязанные к якорю (шаги без sustain:true): effect с meta.message = сообщению и origin = заклинанию. Состояния без обёртки (продолжительный урон) не трогаем. */
@@ -165,8 +165,11 @@ export async function remind(combatant) {
 
 /** Хук deleteItem: якорь исчез (кнопка, пропуск, срок, ручное удаление) — снять привязанное. Откат (undo) не считается концом. */
 export async function onDeleteItem(item, options) {
-  if (item?.type !== "effect" || metaOf(item)?.source !== "sustain" || options?.[MOD]?.undo || !guardActiveGM()) return;
+  if (item?.type !== "effect" || metaOf(item)?.source !== "sustain" || !guardActiveGM()) return;
   const key = metaOf(item).key, lost = [];
+  const dead = (game.messages?.contents ?? []).filter((m) => m.flags?.[MOD]?.sustainReshape?.key === key).map((m) => m.id);   // кнопка «Изменить выбор» без якоря — мёртвая (и при откате)
+  if (dead.length) await ChatMessage.deleteDocuments(dead);
+  if (options?.[MOD]?.undo) return;
   for (const uuid of new Set(dataOf(item)?.actors ?? [])) {
     const actor = await fromUuid(uuid).catch(() => null);
     if (actor && orphaned(actor)) continue;   // сцена/токен удалены — снимать уже нечего
@@ -294,8 +297,30 @@ function bind(message, html) {
   }
 }
 
+/** Кнопка «Изменить выбор» шёпота (use.onReshape): выбор — в окне нажавшего (вне очередей), затем ГМ-лидер исполняет reshapeRun. Alt у ГМа обходит момент Поддержания. */
+function bindReshape(message, html) {
+  const h = message.flags?.[MOD]?.sustainReshape, root = html instanceof HTMLElement ? html : html?.[0];
+  if (!h?.key || !h.actor || !root?.querySelectorAll) return;
+  for (const btn of root.querySelectorAll("[data-af-reshape]")) {
+    if (h.reshaped) { btn.disabled = true; btn.title = L("sustain.reshape.done"); continue; }
+    btn.addEventListener("click", async (ev) => {
+      btn.disabled = true;
+      try {
+        const choices = h.choices ?? [];
+        const value = choices.length === 1 ? choices[0].value : await pickHere({ title: h.title ?? "", prompt: L("sustain.reshape.prompt"), choices, ms: 120000 });
+        if (value == null) return;   // окно закрыто — ничего не меняем, кнопка остаётся
+        const res = await callGM("sustainReshape", h.actor, h.key, message.id, value, !!(game.user?.isGM && ev.altKey));
+        if (!res?.ok) globalThis.ui?.notifications?.warn(L("chat.failed", { reason: res?.reason }));
+        else if (res.result?.denied) globalThis.ui?.notifications?.warn(L(`sustain.reshape.${res.result.denied}`));
+      } catch (e) { console.error(`${MOD} | sustain reshape`, e); }
+      finally { btn.disabled = false; }
+    });
+  }
+}
+
 export function init() {
   Hooks.on("renderChatMessageHTML", bind);
+  Hooks.on("renderChatMessageHTML", bindReshape);
   Hooks.on("deleteItem", (item, options) => { onDeleteItem(item, options).catch((e) => console.error(`${MOD} | sustain.delete`, e)); });
   Hooks.on("deleteChatMessage", (m) => { onDeleteMessage(m).catch((e) => console.error(`${MOD} | sustain.deleteMessage`, e)); });
   Hooks.on("createChatMessage", (m) => { onMessage(m).catch((e) => console.error(`${MOD} | sustain.message`, e)); });

@@ -36,3 +36,18 @@ test("picksFromOps: выбор восстанавливается из сохр�
   assert.equal(empty.opts.size, 0); assert.equal(empty.actor, null);
   delete globalThis.fromUuid;
 });
+
+test("optionsOf: фильтр when (вынесен из applyOps), без when — всегда; пустой набор — []", async () => {
+  const { optionsOf } = await import("../scripts/apply.mjs");
+  const c = { from: "options", options: [{ value: "a" }, { value: "b", when: ["opt:b"] }, { value: "c", label: "Це", when: [{ gte: ["rank", 3] }] }] };
+  assert.deepEqual(optionsOf(c, new Set()).map((o) => o.value), ["a"]);
+  assert.deepEqual(optionsOf(c, new Set(["opt:b", "rank:4"])).map((o) => [o.value, o.label]), [["a", "a"], ["b", "b"], ["c", "Це"]]);
+  assert.deepEqual(optionsOf({ from: "options" }, new Set()), []);
+});
+
+test("hasOwnChoice: ChoiceSet без selection", async () => {
+  const { hasOwnChoice } = await import("../scripts/apply.mjs");
+  assert.equal(hasOwnChoice({ system: { rules: [{ key: "ChoiceSet" }] } }), true);
+  assert.equal(hasOwnChoice({ system: { rules: [{ key: "ChoiceSet", selection: 1 }, { key: "Note" }] } }), false);
+  assert.equal(hasOwnChoice(null), false);
+});

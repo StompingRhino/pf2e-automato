@@ -126,6 +126,7 @@ export const HANDLERS = {
   applyRetch: gm("applyRetch", (actorUuid, degree) => turnConditions.applyRetch(actorUuid, degree), "owner", async (user, actorUuid) => ({ owns: ownsActor(await fromUuid(actorUuid), user) })),
   applyEscape: gm("applyEscape", (actorUuid, items, degree) => escape.applyEscape(actorUuid, items, degree), "owner", async (user, actorUuid) => ({ owns: ownsActor(await fromUuid(actorUuid), user) })),
   sustainRun: gm("sustainRun", (actorUuid, key, how) => sustain.run(actorUuid, key, how), "owner", async (user, actorUuid) => ({ owns: ownsActor(await fromUuid(actorUuid), user) })),   // кнопки «Поддержать / Прекратить» шёпота якоря
+  sustainReshape: gm("sustainReshape", function (actorUuid, key, whisperId, value, alt) { return use.reshapeRun(actorUuid, key, whisperId, value, { userId: this.socketdata?.userId, alt: !!alt && !!game.users.get(this.socketdata?.userId)?.isGM }); }, "owner", async (user, actorUuid) => ({ owns: ownsActor(await fromUuid(actorUuid), user) })),   // «Изменить выбор» при Поддержании; Alt обходит только ГМ
   summonList: gm("summonList", (messageId) => summon.handlers.list(messageId), "author", authorOf),
   summonCreate: gm("summonCreate", function (messageId, uuid, n, opts) { return summon.handlers.create(messageId, uuid, n, { ...opts, force: !!opts?.force && !!game.users.get(this.socketdata?.userId)?.isGM }); }, "author", authorOf),   // Alt обходит только ГМ
   holdResolve: gm("holdResolve", (messageId, how) => hold.resolveManual(messageId, how)),   // ручные кнопки удержанной атаки (damage-gate)

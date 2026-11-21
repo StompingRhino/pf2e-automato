@@ -640,6 +640,11 @@ function vOnUse(u, err) {
     if (u.check != null || !["same", "new"].includes(u.pulse) || !["area", "selected"].includes(u.targets) || !hasTarget || (u.pulse === "new" && u.targets !== "area")) err.push(E("use.pulse", "onUse.pulse"));
     else out.pulse = u.pulse;
   }
+  // reshape: «Изменить выбор» при Поддержании (use.mjs onReshape/reshapeRun) — только себе, с выбором из вариантов и шагом sustain:true; без pulse и check
+  if (u.reshape != null) {
+    if (u.reshape !== true || u.targets !== "self" || u.pulse != null || u.check != null || !out.apply.some((a) => a.choose?.from === "options") || !out.apply.some((a) => a.sustain === true)) err.push(E("use.reshape", "onUse.reshape"));
+    else out.reshape = true;
+  }
   // ponytail: эманацию вокруг автора от области не отличить (формы зоны в схеме нет) — в области move только from:"point" (эманация = центр рамки, т.е. автор)
   // from:"point" — только с областью; в области толкать от автора нельзя (см. выше)
   const moves = [out.apply, ...Object.values(out.challenge?.byDegree ?? {}), ...Object.values(out.check?.byDegree ?? {})].flatMap(movesOf);

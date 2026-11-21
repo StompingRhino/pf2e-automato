@@ -23,6 +23,7 @@
           "range": "Range is {ft: feet > 0, area?: boolean, grow?: {add, every}} ({path})",
           "summon": "Summon — { traits: [traits] } or { uuid }, optional levels {rank: level} and count ({path})",
           "summonObject": "Summoned object — only { object: { hp {base, perRank, fromRank}, ac, guard {on: strike, adjacent, side: allies}, art {kind: assets, entries [{id, rare?}]}, range?, duration?, single?, rankFrom? } }, without traits/uuid/levels/count ({path})",
+          "reshape": "Sustain \"change the choice\" is only true; needs self-targeting, a choose-from-options step and a sustain-bound step, no pulse or check ({path})",
           "pulse": "Sustain pulse is \"same\" or \"new\" and needs an area or selected targets plus a challenge or a target step; \"new\" — area only ({path})",
           "both": "A challenge and a check are mutually exclusive — keep only one ({path})",
           "checkSelf": "A check against a target does not work with \"self\" — choose selected targets or an area ({path})"

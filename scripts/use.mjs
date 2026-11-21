@@ -17,6 +17,7 @@ import { asksActions, pf2eVariants, variantActions } from "./builtin/variable-ca
 import { isHeld, isCounterGate, replayers } from "./hold.mjs";
 import * as sustain from "./sustain.mjs";
 import { whisper, esc } from "./builtin/lib.mjs";
+import { cardButton } from "./card.mjs";
 import { spellDcOf } from "./familiar.mjs";
 import { strikeLinked } from "./strike-link.mjs";
 
@@ -96,7 +97,7 @@ export function areaUpdate(use, regionUuid, tokens) {
 
 /** §3.H: можно ли дозапускать автоматически. */
 export function isResumable(use, now, maxAgeMinutes) {
-  if (!use || use.kind !== "use" || use.state?.yielded || use.state?.done || use.state?.awaitingRegion || use.state?.awaitingActions) return false;
+  if (!use || use.kind !== "use" || use.state?.yielded || use.state?.done || use.state?.awaitingRegion || use.state?.awaitingActions || use.state?.reshape) return false;
   return now - (use.createdAt ?? 0) <= maxAgeMinutes * 60000;
 }
 
@@ -251,7 +252,8 @@ export async function onCreateMessage(message) {
     if (!accepted) await tolerate("onRollMessage", () => actions.onRollMessage(message));   // бросок действия из листа/макроса — без карточки
   } else if (ctx === "attack-roll") await tolerate("onRollMessage", () => actions.onRollMessage(message));
   if (ctx === "attack-roll") await tolerate("onAttackMessage", () => reactions.onAttackMessage(message));
-  if (useOf(message)?.kind === "use" && !useOf(message).state?.awaitingActions) await tolerate("runUse", () => execUse(message.id, true));
+  // служебную карточку «Изменить выбор» исполняет сам reshapeRun (ждёт окно ChoiceSet и решает, возвращать ли прежнее): хук на ней не исполняет
+  if (useOf(message)?.kind === "use" && !useOf(message).state?.awaitingActions && !useOf(message).state?.reshape) await tolerate("runUse", () => execUse(message.id, true));
 }
 
 /** variable-cast снял awaitingActions (число записано или окно отменено) — ГМ продолжает исполнение.
@@ -307,6 +309,7 @@ export function init() {
   Hooks.on("createRegion", onCreateRegion);
   Hooks.on("deleteRegion", onDeleteRegion);
   sustain.sustained.add((e) => onPulse(e).catch((err) => console.error(`${MOD} | use.pulse`, err)));
+  sustain.sustained.add((e) => onReshape(e).catch((err) => console.error(`${MOD} | use.reshape`, err)));
   Hooks.on("deleteItem", (i) => pulseSeen.delete(i.uuid));
   Hooks.on("userConnected", () => { if (guardActiveGM()) tolerate("resume", () => resumePending()); });
 }
@@ -428,7 +431,8 @@ function execUse(messageId, skipIfDone) {
       await setState(message, { derived: { pending, applied } });
     }
 
-    if (!low && onUse?.apply?.length && modeOf("effect") === "auto") await applyUseSteps(message, use, { targets: !area });   // область: цели берёт runRegion
+    // «Изменить выбор» (state.reshape.force): клик и есть ручное действие — применение идёт и при effect=button; effect=off по-прежнему запрещает
+    if (!low && onUse?.apply?.length && (modeOf("effect") === "auto" || (use.state?.reshape?.force && modeOf("effect") !== "off"))) await applyUseSteps(message, use, { targets: !area });   // область: цели берёт runRegion
 
     if (!low && use.rule?.macros?.some((m) => m.phase === "onUse") && modeOf("macro") !== "off") {
       const targets = (await Promise.all(inRange(use.targets).map((t) => fromUuid(t.uuid)))).filter(Boolean);
@@ -573,6 +577,132 @@ async function pulseAnchor(use, message) {
   if (!spell?.system?.duration?.sustained || !author) return;
   const { item: anchor } = await sustain.attach(author, null, { key: sustain.anchorKey(message.id), msg: message.id, item: spell, token: use.token ? await fromUuid(use.token).catch(() => null) : null, at: use.at, pulse: true });
   if (anchor && !use.at) pulseSeen.set(anchor.uuid, Date.now());   // вне боя Поддержание сразу после сотворения — не импульс
+}
+
+/* ---------- «Изменить выбор» при Поддержании (onUse.reshape, plan-sustain-reshape.md) ---------- */
+
+/** Правило служебной карточки смены: шаг choose первым, затем шаги себе с sustain:true. null — менять нечего. chooseIndex — индекс choose в этом списке (ключ `chose`). */
+export function reshapeRule(rule) {
+  const list = rule?.onUse?.apply ?? [], ci = list.findIndex((s) => s.choose?.from === "options");
+  if (ci < 0) return null;
+  const steps = list.filter((s, i) => i !== ci && (s.to ?? "self") === "self" && s.sustain === true);
+  return { rule: { v: rule.v ?? 1, onUse: { targets: "self", excludeSelf: null, apply: [list[ci], ...steps] } }, choose: list[ci].choose, chooseIndex: 0 };
+}
+
+/** Чистая: варианты окна и порог показа шёпота. options — после фильтра по рангу сотворения; current — действующий вариант; own — варианты, чей эффект имеет свой ChoiceSet.
+ *  Действующий вариант без собственного выбора исключается (смена в себя бессмысленна); шёпот — если вариантов ≥2 либо единственный имеет свой выбор внутри (Animal Form). */
+export function reshapeChoices(options, current, own = new Set()) {
+  return { choices: options.filter((o) => o.value !== current || own.has(o.value)), show: options.length >= 2 || (options.length === 1 && own.has(options[0].value)) };
+}
+
+/** Чистая: можно ли менять сейчас. Вне боя (hpos.combat == null) — всегда; в бою — в раунде Поддержания, в ход автора. -> null | "needSustain" | "wrongTurn" */
+export function reshapeMoment(hpos, cur, last, ownTurn = true) {
+  if (!hpos?.combat) return null;
+  if (!sustain.sameTurn(hpos, cur) || !sustain.sameTurn(last, cur)) return "needSustain";
+  return ownTurn ? null : "wrongTurn";
+}
+
+/** Всё, что нужно шёпоту и исполнению: правило, варианты по рангу сотворения, действующий вариант. null — у якоря нет reshape. */
+async function reshapeCtx(anchor, actor) {
+  const d = anchor?.flags?.[MOD]?.sustain;
+  if (!d) return null;
+  const spell = d.src ? await fromUuid(d.src).catch(() => null) : null;
+  const cast = d.msg ? game.messages.get(d.msg) : null, cu = useOf(cast);
+  if (cu?.state?.yielded) return null;
+  const found = cu ? null : spell && rules.resolveRule(spell);
+  const rule = cu?.rule ?? found?.rule;
+  if (!rule?.onUse?.reshape || (!cu && compat.shouldYield(rule, { slug: found.slug, sourceUuid: found.sourceUuid }))) return null;
+  const rs = reshapeRule(rule);
+  if (!rs) return null;
+  const rank = cast?.flags?.pf2e?.origin?.castRank ?? d.castRank ?? spell?.rank;   // ранг сотворения (в якоре — сообщение могли вычистить), не ранг предмета в книге
+  const wset = await apply.whenOptions({ use: cu ?? {}, message: { flags: { pf2e: { origin: { ...cast?.flags?.pf2e?.origin, castRank: rank } } } }, selfActor: actor, originItem: spell });
+  const options = apply.optionsOf(rs.choose, wset), key = anchor.flags[MOD].meta.key;
+  const effOf = (v) => rs.rule.onUse.apply.find((s) => s.effect?.uuid && s.when?.includes?.(`choice:${v}`))?.effect.uuid;
+  const own = new Set();
+  for (const o of options) { const u = effOf(o.value), src = u ? await fromUuid(u).catch(() => null) : null; if (apply.hasOwnChoice(src)) own.add(o.value); }
+  const bound = actor.items.filter((i) => i.flags?.[MOD]?.meta?.sustainOf === key);
+  const current = options.find((o) => bound.some((b) => effOf(o.value) && b._stats?.compendiumSource === effOf(o.value)))?.value ?? null;
+  return { d, spell, cast, cu, found, rule, rs, rank, key, ...reshapeChoices(options, current, own) };
+}
+
+/** Слушатель sustain.sustained: у заклинания с onUse.reshape — шёпот автору и ГМу с кнопкой «Изменить выбор» (прежний шёпот этого якоря удаляется). */
+export async function onReshape({ anchor, actor, pos }) {
+  if (!guardActiveGM() || !actor || modeOf("effect") === "off") return;
+  const c = await reshapeCtx(anchor, actor);
+  if (!c?.show) return;
+  const old = (game.messages?.contents ?? []).filter((m) => m.flags?.[MOD]?.sustainReshape?.key === c.key).map((m) => m.id);
+  if (old.length) await ChatMessage.deleteDocuments(old);
+  const name = c.spell?.name ?? anchor.name;   // название — с листа
+  await whisper(actor, L("sustain.reshape.offer", { name: esc(actor.name), spell: esc(name) }), "sustain",
+    { sustainReshape: { actor: actor.uuid, key: c.key, pos, title: name, choices: c.choices } }, cardButton(`data-af-reshape="1"`, L("sustain.reshape.button")));
+}
+
+/**
+ * Исполнение «Изменить выбор» (ГМ-лидер; значение выбрано в окне нажавшего). Служебная карточка kind:"use" со срезанным правилом исполняется обычным execUse
+ * (вручную applyUseSteps не зовём — двойной эффект). Порядок: проверки -> снять привязанное -> карточка -> дождаться её исполнения -> привязано ли новое.
+ * Нового нет (окно ChoiceSet закрыто, иммунитет) — снятое возвращается из data, карточка удаляется. -> { reshaped: true } | { denied: <lang sustain.reshape.*> }
+ */
+export function reshapeRun(actorUuid, key, whisperId, value, { userId = null, alt = false } = {}) {
+  return queue(`sustain:${key}`, async () => {
+    const deny = (denied) => ({ denied });
+    if (modeOf("effect") === "off") return deny("off");
+    const doc = await fromUuid(actorUuid).catch(() => null), actor = doc?.actor ?? doc;
+    const anchor = sustain.findAnchor(actor, key), wm = game.messages.get(whisperId), h = wm?.flags?.[MOD]?.sustainReshape;
+    if (!anchor || !h || h.key !== key || h.actor !== actor.uuid) return deny("gone");
+    if (h.reshaped) return deny("done");
+    const c = await reshapeCtx(anchor, actor);
+    if (!c) return deny("gone");
+    if (!alt) {
+      const cur = sustain.posOfActor(actor), combat = cur.combat ? game.combats.get(cur.combat) : null;
+      const why = reshapeMoment(h.pos, cur, anchor.flags[MOD].sustain.last, !combat?.combatant || combat.combatant.actor?.uuid === actor.uuid);
+      if (why) return deny(why);
+    }
+    if (!c.choices.some((x) => x.value === value)) return deny("badChoice");
+
+    const o = c.cast?.flags?.pf2e?.origin, { cu, found, spell } = c;
+    const snap = buildSnapshot({
+      kind: "use", now: Date.now(), actor: actor.uuid, token: cu?.token ?? anchor.system?.context?.origin?.token ?? null,
+      dc: cu?.dc ?? spellDcOf(spell), targets: [],
+      rollOptions: [...(o?.rollOptions ?? spell?.getRollOptions?.("origin:item") ?? []), "sustain:reshape"],
+      resolved: { rule: c.rs.rule, source: cu?.src ?? found?.source, confidence: "high", slug: cu?.slug ?? found?.slug, sourceUuid: cu?.sourceUuid ?? found?.sourceUuid },
+      item: cu?.item ?? { uuid: spell?.uuid ?? c.d.src, name: spell?.name ?? "", type: "spell", sourceId: found?.sourceUuid ?? null }
+    });
+    Object.assign(snap.state, { sustainKey: key, reshape: { force: true, preChoice: { index: c.rs.chooseIndex, value } } });
+
+    const restore = (data) => queue(`actor:${actor.uuid}`, () => actor.createEmbeddedDocuments("Item", foundry.utils.deepClone(data)));
+    const removed = await apply.removeBound(actor, key);
+    if (removed.op === "effRemoved") {
+      if (actor.items.some((i) => i.flags?.[MOD]?.meta?.sustainOf === key)) { await restore(removed.data); return deny("stuck"); }   // onDelete:"restrict": новое встало бы вторым
+      snap.state.apply = { self: { ops: [{ op: "effRemoved", actor: actor.uuid, key, data: removed.data }] } };
+    }
+    let msg = null, fresh = [];
+    try {
+      msg = await ChatMessage.create({
+        author: userId ?? game.user.id,   // автор = нажавший: окно ChoiceSet эффекта (Animal/Elemental Form) уйдёт ему (chooserOf)
+        speaker: ChatMessage.getSpeaker?.({ actor }),
+        content: L("sustain.reshape.card", { spell: esc(snap.item.name) }),
+        flags: { [MOD]: { use: snap }, ...(c.rank != null && { pf2e: { origin: { castRank: c.rank } } }) }   // в origin только castRank (см. onPulse)
+      });
+      // исполняем сами и ждём по-настоящему (окно ChoiceSet эффекта до PICK_MS): хук createChatMessage мог ещё не сработать — ожидание очереди кончилось бы раньше
+      if (msg) await execUse(msg.id, true);
+      // созданное — по ops свежей карточки; документы и якорь могли исчезнуть, пока шло исполнение (окно ChoiceSet до PICK_MS): перечитываем после него
+      const live = game.messages.get(msg?.id), anchorNow = sustain.findAnchor(actor, key);
+      const ops = live?.flags?.[MOD]?.use?.state?.apply?.self?.ops ?? [];
+      fresh = (await Promise.all(ops.filter((o) => o.op === "created").map((o) => fromUuid(o.item).catch(() => null)))).filter((i) => i?.actor);
+      if (fresh.length && anchorNow) {
+        await live.update({ [flagPath("use", "state", "apply", "self", "ops")]: [...ops, { op: "reshaped", actor: actor.uuid, key, keys: fresh.map((i) => i.flags?.[MOD]?.meta?.key) }] });
+        await anchorNow.update({ [flagPath("sustain", "reshaped")]: true });
+        await game.messages.get(whisperId)?.update({ [flagPath("sustainReshape", "reshaped")]: true });
+        return { reshaped: true };
+      }
+    } catch (e) { console.error(`${MOD} | use.reshape`, e); }
+    // не вышло. Якоря нет (сотворение откатили, пока шло окно) — созданное снимаем, прежнее возвращать некуда; иначе прежнее возвращаем на тот же якорь (data хранит sustainOf)
+    const gone = !sustain.findAnchor(actor, key);
+    if (gone) for (const i of fresh) await queue(`actor:${actor.uuid}`, () => i.delete({ [MOD]: { undo: true } })).catch(() => {});
+    else if (removed.op === "effRemoved") await restore(removed.data);
+    if (msg && game.messages.get(msg.id)) await msg.delete().catch(() => {});   // откатывать ей нечего
+    return deny(gone ? "gone" : "failed");
+  });
 }
 
 /** Последний живой регион сообщения -> runRegion, если область ещё не снята (K7 п.5). Вне очереди use:<id> — runRegion берёт её сам. */

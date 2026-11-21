@@ -4,6 +4,21 @@
       "noToken": "<p>{name}'s familiar \"{familiar}\" has no token on this scene: the ability did not fire. Shown once per session.</p>"
     },
     "sustain": {
+      "reshape": {
+        "button": "Change choice",
+        "offer": "<p><b>{name}</b>: \"{spell}\" sustained - you can change the choice (once per Sustain).</p>",
+        "prompt": "Choose a new option",
+        "card": "<p><strong>{spell}</strong>: choice changed on Sustain.</p>",
+        "done": "The choice is already changed.",
+        "gone": "This sustained spell has already ended.",
+        "needSustain": "Sustain the spell this round first: the choice can only be changed together with Sustaining.",
+        "wrongTurn": "It is not the caster's turn: change the choice on their turn, when Sustaining.",
+        "badChoice": "This option is not available now (cast rank, or it is already chosen).",
+        "stuck": "The previous effect cannot be removed (protected from deletion) - the choice is unchanged.",
+        "failed": "The new effect was not created - the previous one is restored, the choice is unchanged.",
+        "off": "Applying effects is turned off in the module settings - the choice is not changed.",
+        "undoDenied": "Cannot undo the change: the Sustain has ended, a newer change replaced it or its effect was removed."
+      },
       "name": "Sustaining: {name}",
       "desc": "The spell is being sustained: the Sustain action is needed each of the caster’s turns. Spell effects bound to the sustaining are removed when this effect goes away.",
       "offer": "<p><b>{name}</b>: “{spell}” is sustained. Press “Sustain” once per turn; a missed turn or “Dismiss” ends the spell.</p>",
