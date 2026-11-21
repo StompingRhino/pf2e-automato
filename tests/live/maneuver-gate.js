@@ -119,12 +119,14 @@ async () => {
     const tTrp = await tok(trp, 100, 1300), vic = await mk("жертва"), tVic = await tok(vic, 200, 1300);
     await rig(trp, "athletics"); await wait(300);
     await fix(10);
-    const hp0 = vic.system.attributes.hp.value;
+    const va = tVic.actor;   // несвязанный токен: урон ложится на актёра токена, не мира
+    const hp0 = va.system.attributes.hp.value;
     r = await attempt("trip", trp, tTrp, tVic);
-    await wait(2500);
-    const drop = hp0 - vic.system.attributes.hp.value;
+    await waitFor(() => va.system.attributes.hp.value < hp0, 15000);   // шаги по степени идут после анимации Dice So Nice (4–5 с)
+    await wait(800);
+    const drop = hp0 - va.system.attributes.hp.value;
     row("Trip крит. успех: исход critical", r.m?.flags?.pf2e?.context?.outcome === "criticalSuccess", String(r.m?.flags?.pf2e?.context?.outcome));
-    row("Trip крит.: урон нанесён один раз (1d6 при d20=10 -> 3)", drop === 3, `hp ${hp0} -> ${vic.system.attributes.hp.value}, потеряно ${drop}`);
+    row("Trip крит.: урон нанесён один раз (1d6 при d20=10 -> 3)", drop === 3, `hp ${hp0} -> ${va.system.attributes.hp.value}, потеряно ${drop}`);
     const el = r.m && dom(r.m);
     row("Trip крит.: ссылка @Damage в заметке pf2e погашена", !!el && !el.querySelector("a.inline-roll[data-damage-roll]") && !!el.querySelector(".paf-dealt"), el ? "" : "нет DOM карточки");
     await fix(null);
@@ -134,7 +136,7 @@ async () => {
     const tSly = await tok(sly, 100, 1500), dv = await mk("обезоруживаемый"), tDv = await tok(dv, 200, 1500);
     await rig(sly, "thievery"); await wait(300); await fix(10);
     r = await attempt("disarm", sly, tSly, tDv, { statistic: "thievery" });
-    const og = await waitFor(() => dv.itemTypes.condition.some((c) => c.slug === "off-guard"), 6000);
+    const og = await waitFor(() => tDv.actor.itemTypes.condition.some((c) => c.slug === "off-guard"), 15000);   // после анимации кубиков
     row("Sly Disarm (Воровство): цель off-guard", !!r.m && !!og, `исход ${r.m?.flags?.pf2e?.context?.outcome}`);
     await fix(null);
 
@@ -143,7 +145,7 @@ async () => {
     const tGd = await tok(gd, 100, 1700), gv = await mk("подначиваемый"), tGv = await tok(gv, 200, 1700);
     await rig(gd, "deception"); await wait(300); await fix(10);
     r = await attempt("feint", gd, tGd, tGv);
-    const ef = await waitFor(() => gv.itemTypes.effect.some((i) => i.sourceId === "Compendium.pf2e.feat-effects.Item.rflbFzV44Fd6aBLE"), 8000);
+    const ef = await waitFor(() => tGv.actor.itemTypes.effect.some((i) => i.sourceId === "Compendium.pf2e.feat-effects.Item.rflbFzV44Fd6aBLE"), 15000);
     row("Goading Feint (выбор goading): эффект на цели", !!r.m && !!ef, `исход ${r.m?.flags?.pf2e?.context?.outcome}; окно выбора отвечает первым вариантом (goading)`);
     await fix(null);
 
