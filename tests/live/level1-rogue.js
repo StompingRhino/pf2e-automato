@@ -389,7 +389,7 @@ async () => {
     await wait(700);
     if (!e.A(tR).items.some((i) => i.slug === "nimble-dodge")) await e.catalog(e.A(tR), ND);
     const hints = (m) => game.messages.filter((x) => x.flags?.[MOD]?.reaction?.attack === m?.id);
-    const shot = async (label) => { await e.fix(10); const m = await e.hit(tG, tR); await wait(2500); const h = hints(m); return { m, n: h.length, bonus: h[0]?.flags?.[MOD]?.reaction?.bonus }; };
+    const shot = async (label) => { await e.fix(10); const m = await e.hit(tG, tR); await waitFor(() => hints(m).length, 7000); /* подсказка — после анимации Dice So Nice (~3,6 с) */ const h = hints(m); return { m, n: h.length, bonus: h[0]?.flags?.[MOD]?.reaction?.bonus }; };
     let s = await shot("чисто");
     t.ok(s.n === 1 && s.bonus === 2, `без щита — подсказка +2: n=${s.n} bonus=${s.bonus}`);
     const f1 = await circFx(e.A(tR), 1); await wait(500);

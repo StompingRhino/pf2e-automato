@@ -347,7 +347,6 @@ export function buildReactionViewModel(message, user, env = null) {
     popup: showDegrees
       ? t("chat.reaction.popup", { item, actor: r.actorName ?? env.uuidName(r.actor) ?? "", before: degree("before"), after: degree("after") })
       : t("chat.reaction.popupHidden", { item, actor: r.actorName ?? env.uuidName(r.actor) ?? "" }),
-    used: r.used ? t("chat.reaction.used") : null,
     canUse: !r.used && (!!user.isGM || (!!r.actor && env.isActorOwner(r.actor, user)))
   };
 }
@@ -371,9 +370,11 @@ async function renderBlock(message, html) {
   const vm = isCounterGate(message) ? null : buildViewModel(message, game.user);   // сотворение удержано/сорвано контрзаклинанием: блока спасбросков и применения нет
   const reaction = buildReactionViewModel(message, game.user);
   const showVm = vm && !vm.empty;
-  if (!showVm && !reaction) { root.querySelector(":scope > .pf2e-automato")?.remove(); return; }
+  // блок — прямой потомок .message-content, у шёпота реакции — внутри его карточки (.paf-sheet)
+  const drop = () => root.querySelectorAll(":scope > .pf2e-automato, .paf-sheet > .pf2e-automato").forEach((el) => el.remove());
+  if (!showVm && !reaction) return void drop();
   template ??= await foundry.applications.handlebars.getTemplate(TEMPLATE);   // до ready() (F5) шаблона ещё нет
-  root.querySelector(":scope > .pf2e-automato")?.remove();
+  drop();
   const block = foundry.utils.parseHTML(template({ vm: showVm ? vm : null, reaction }));
   const mt = message._stats?.modifiedTime ?? null;
   let rec = lastRender.get(message.id), fresh = false;
@@ -407,7 +408,7 @@ async function renderBlock(message, html) {
     if (o.document.isOwner) o.control({ releaseOthers: !ev.shiftKey });
     canvas.animatePan({ ...o.center, duration: 250 });
   });   // новый элемент на каждый рендер -> слушатели не копятся
-  root.append(block);
+  ((!showVm && root.querySelector(":scope > .paf-card .paf-sheet")) || root).append(block);
   placeUnder(html, det);   // кнопки «Урон» (damage-button.mjs) — под спасбросками
   const rc = html.querySelector(".paf-recharge-box");
   if (rc?.parentNode === root) root.append(rc);   // «Перезарядка» (recharge-button.mjs) — в самом конце карточки, после блока модуля

@@ -109,6 +109,9 @@ a.inline-check.paf-check-text > i { display: none; }
 /* Шёпот модуля (scripts/card.mjs) — самостоятельная карточка в языке «Мастерской» и листа pf2e:
    пергамент #f8f4f1, рамка #baa991, золотая черта #d8c384 под шапкой (Eczar), бордовое #5e0000 единственное действие. */
 .paf-card > .pf2e-automato { margin: 2px 0 0; padding: 0; border: 0; font-size: 13px; line-height: 1.45; }
+/* блок исхода реакции (chat-block.hbs) внутри карточки шёпота: продолжение текста, без своей черты */
+.paf-card .paf-sheet > .pf2e-automato { margin: 0; padding: 0; border: 0; font-size: inherit; line-height: inherit; }
+.paf-card .paf-sheet > .pf2e-automato .paf-reaction { padding-top: 0; font: 500 12px/1.3 Roboto, system-ui, sans-serif; color: #5b5048; }
 .paf-card .paf-sheet { overflow: hidden; color: #2a2420; background: #f8f4f1; border: 1px solid #baa991; border-radius: 3px; }
 .paf-card .paf-card-head {
   display: flex; align-items: center; gap: 8px; padding: 6px 10px 5px;
@@ -174,7 +177,7 @@ a.inline-check.paf-check-text > i { display: none; }
 .chat-message :is(.paf-damage-box, .paf-area-box, .paf-summon-box, .paf-maneuver-box, .paf-bd-actions, .paf-card-actions) > button:only-of-type,
 .chat-message .paf-bd-actions > button.paf-main,
 .chat-message .pf2e-automato > .spell-button > button,
-.chat-message .pf2e-automato:not(:has(.paf-damage-box button:not([hidden]), > .spell-button > button:not([hidden]))) .paf-note > button:is([data-action=apply-use], [data-action=resume], [data-action=create-zone], [data-action=use-reaction]),
+.chat-message .pf2e-automato:not(:has(.paf-damage-box button:not([hidden]), > .spell-button > button:not([hidden]))) .paf-note > button:is([data-action=apply-use], [data-action=resume], [data-action=create-zone]),
 .chat-message .pf2e-automato:not(:has(.paf-damage-box button:not([hidden]), > .spell-button > button:not([hidden]))) .paf-bulk > button[data-action=apply],
 .chat-message .chat-card button:is([data-action=spell-template], [data-action=spell-save], [data-action=spell-attack], [data-action=spell-damage], [data-action=spell-counteract]) {
   grid-column: 1 / -1; color: #fff; background: #5e0000; border-color: #5e0000;
@@ -182,7 +185,7 @@ a.inline-check.paf-check-text > i { display: none; }
 .chat-message :is(.paf-damage-box, .paf-area-box, .paf-summon-box, .paf-maneuver-box, .paf-bd-actions, .paf-card-actions) > button:only-of-type:hover:not(:disabled),
 .chat-message .paf-bd-actions > button.paf-main:hover:not(:disabled),
 .chat-message .pf2e-automato > .spell-button > button:hover:not(:disabled),
-.chat-message .pf2e-automato:not(:has(.paf-damage-box button:not([hidden]), > .spell-button > button:not([hidden]))) .paf-note > button:is([data-action=apply-use], [data-action=resume], [data-action=create-zone], [data-action=use-reaction]):hover:not(:disabled),
+.chat-message .pf2e-automato:not(:has(.paf-damage-box button:not([hidden]), > .spell-button > button:not([hidden]))) .paf-note > button:is([data-action=apply-use], [data-action=resume], [data-action=create-zone]):hover:not(:disabled),
 .chat-message .pf2e-automato:not(:has(.paf-damage-box button:not([hidden]), > .spell-button > button:not([hidden]))) .paf-bulk > button[data-action=apply]:hover:not(:disabled),
 .chat-message .chat-card button:is([data-action=spell-template], [data-action=spell-save], [data-action=spell-attack], [data-action=spell-damage], [data-action=spell-counteract]):hover:not(:disabled) {
   color: #fff; background: #7a1414; border-color: #7a1414;

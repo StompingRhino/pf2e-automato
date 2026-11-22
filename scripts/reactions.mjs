@@ -5,7 +5,7 @@ import { resolveRule, slugOf, sourceOf } from "./rules.mjs";
 import { runMacros } from "./macros.mjs";
 import { buildReactionViewModel, buildDamagedViewModel } from "./chat.mjs";
 import { noReactions } from "./inline-effect.mjs";
-import { combatOf, ownerQueue } from "./builtin/lib.mjs";
+import { combatOf, ownerQueue, card, headOf } from "./builtin/lib.mjs";
 
 const clamp = (n) => Math.min(3, Math.max(0, n));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -160,7 +160,8 @@ function content(h) {
   // степени в content не пишем (метаигра) — их показывает блок chat.mjs по flags[MOD].reaction вместе с кнопкой
   const text = L("reactions.hint", { actor: esc(h.actorName), item: esc(h.itemName), bonus: signed(h.bonus), attacker: esc(h.attackerName) });
   const tail = h.used ? `<p>${L("reactions.used")}</p>${h.rerolled ? `<p>${L("reactions.rerolled")}</p>` : ""}` : "";
-  return `<div class="pf2e-automato-reaction"><p>${text}</p>${tail}</div>`;
+  // карточка «Мастерской»; строку исхода и кнопку chat.mjs renderBlock вставляет внутрь неё
+  return card(`<p>${text}</p>${tail}`, "", headOf("reaction"));
 }
 
 export async function onAttackMessage(message) {
@@ -195,7 +196,7 @@ export async function onAttackMessage(message) {
     const notify = reaction.notify ?? ["owner", "gm"];
     const whisper = game.users.filter((u) => (notify.includes("gm") && u.isGM) || (notify.includes("owner") && actor.testUserPermission(u, "OWNER"))).map((u) => u.id);
     if (!whisper.length) continue;
-    await ChatMessage.create({ whisper, content: content(h), speaker: { alias: "pf2e-automato" }, flags: { [MOD]: { reaction: h } } });
+    await ChatMessage.create({ whisper, content: content(h), speaker: ChatMessage.getSpeaker?.({ actor }), flags: { [MOD]: { reaction: h } } });
     debug("reaction hint", item.name, r);
   }
 }

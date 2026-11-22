@@ -1,12 +1,12 @@
 // Единая разметка шёпотов модуля — карточка в языке «Мастерской» (styles/chat.css, .paf-card): пергамент, шапка с названием,
-// текст, ряд кнопок. .paf-card снаружи: renderBlock удаляет только прямого потомка .message-content.
+// текст, ряд кнопок. .paf-card снаружи: renderBlock удаляет только свой блок (прямой потомок .message-content или .paf-sheet > .pf2e-automato).
 
 /** Шапки шёпотов по тегу: иконка Font Awesome; название — lang `card.<tag>` (подставляет вызывающий). */
 export const HEADS = {
   "blade-dance": "fa-khanda", "double-slice": "fa-khanda", "one-shot-one-kill": "fa-crosshairs", "onyx-dog": "fa-dog", summon: "fa-ghost",
   guard: "fa-tree", rest: "fa-bed", "reactive-strike": "fa-bolt", "shield-block": "fa-shield-halved", "surprise-attack": "fa-user-ninja", escape: "fa-unlock",
   retch: "fa-face-dizzy", spellshape: "fa-wand-sparkles", invis: "fa-ghost", saves: "fa-dice-d20", vision: "fa-eye",
-  suffocation: "fa-lungs", "follow-up": "fa-hand-back-fist", "apparition-sense": "fa-ghost", "damage-link": "fa-link", "hunt-prey": "fa-bullseye", coat: "fa-flask", rage: "fa-fire", sustain: "fa-hourglass-half", "basic-damage": "fa-heart-crack", "on-damaged": "fa-shield-heart", "on-failed": "fa-dice"
+  suffocation: "fa-lungs", "follow-up": "fa-hand-back-fist", "apparition-sense": "fa-ghost", "damage-link": "fa-link", "hunt-prey": "fa-bullseye", coat: "fa-flask", rage: "fa-fire", sustain: "fa-hourglass-half", "basic-damage": "fa-heart-crack", "on-damaged": "fa-shield-heart", "on-failed": "fa-dice", reaction: "fa-reply"
 };
 
 /** head: { title, icon } | null. buttons — готовые cardButton(...) (и поле СЛ, если нужно). */

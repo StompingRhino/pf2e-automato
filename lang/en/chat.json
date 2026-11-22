@@ -111,8 +111,7 @@
         "popupHidden": "{item} ({actor}): reaction available",
         "windowTitle": "Reaction",
         "use": "Use",
-        "skip": "Skip",
-        "used": "used"
+        "skip": "Skip"
       }
     },
     "invis": {
