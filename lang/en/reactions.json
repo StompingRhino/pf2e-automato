@@ -1,7 +1,7 @@
 {
   "PF2E_AUTOMATO": {
     "reactions": {
-      "hint": "Attack by \"{attacker}\": {bonus} AC.",
+      "hint": "{attacker} attacks: {bonus} AC.",
       "use": "Use reaction",
       "used": "Used: the outcome of this attack was recalculated.",
       "spent": "The reaction is already spent this round.",

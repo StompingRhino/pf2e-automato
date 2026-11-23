@@ -106,7 +106,6 @@
       },
       "reaction": {
         "hint": "Outcome: {before} → {after}",
-        "hintHidden": "Can be used",
         "popup": "{item} ({actor}): {before} → {after}",
         "popupHidden": "{item} ({actor}): reaction available",
         "windowTitle": "Reaction",

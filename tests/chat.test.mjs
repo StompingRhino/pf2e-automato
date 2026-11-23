@@ -220,8 +220,8 @@ test("окно реакции: только получателям шёпота,
   const hide = mkEnv({ env: { metagame: { dcs: false, results: false } } });
   assert.match(reactionWindowText(msg(), p, hide), /popupHidden/);
   assert.match(reactionWindowText(msg(), gm, hide), /chat\.reaction\.popup\{/);
-  assert.match(buildReactionViewModel(msg(), p, hide).text, /hintHidden/);
-  assert.equal(buildReactionViewModel(msg({}, true), p, hide).text, null);                 // использована — «можно использовать» не пишем
+  assert.equal(buildReactionViewModel(msg(), p, hide).text, null);                         // скрытые итоги: строки нет, только кнопка
+  assert.equal(buildReactionViewModel(msg(), p, hide).canUse, true);
   assert.match(buildReactionViewModel(msg({}, true), gm, hide).text, /chat\.reaction\.hint\{/);   // ГМу итог остаётся
 });
 

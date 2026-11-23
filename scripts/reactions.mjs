@@ -172,7 +172,7 @@ export async function onAttackMessage(message) {
   const actor = await fromUuid(ctx.target.actor);
   if (!actor || !reactionAvailable(actor)) return;
   const attacker = message.speaker?.actor ?? message.speaker?.token ?? null;
-  const attackerName = message.speaker?.alias ?? "";
+  const attackerName = message.speaker?.alias || message.actor?.name || "";
 
   for (const { item, reaction } of reactionItems(actor)) {
     if (reaction.trigger !== "attack-on-self" || reaction.bonus?.stat !== "ac") continue;
