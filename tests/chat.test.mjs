@@ -221,6 +221,8 @@ test("окно реакции: только получателям шёпота,
   assert.match(reactionWindowText(msg(), p, hide), /popupHidden/);
   assert.match(reactionWindowText(msg(), gm, hide), /chat\.reaction\.popup\{/);
   assert.match(buildReactionViewModel(msg(), p, hide).text, /hintHidden/);
+  assert.equal(buildReactionViewModel(msg({}, true), p, hide).text, null);                 // использована — «можно использовать» не пишем
+  assert.match(buildReactionViewModel(msg({}, true), gm, hide).text, /chat\.reaction\.hint\{/);   // ГМу итог остаётся
 });
 
 test("сводка/сворачивание: скрытые итоги у игрока — settled=false и summary=null; ГМу и при открытых итогах — как раньше", () => {

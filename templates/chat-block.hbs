@@ -86,7 +86,7 @@
   {{/if}}
 {{/if}}
 {{#if reaction}}
-  <p class="paf-note paf-reaction">{{reaction.text}}</p>{{!-- «использовано» пишет сам шёпот (reactions.mjs content) --}}
+  {{#if reaction.text}}<p class="paf-note paf-reaction">{{reaction.text}}</p>{{/if}}{{!-- «использовано» пишет сам шёпот (reactions.mjs content) --}}
   {{#if reaction.canUse}}<div class="paf-card-actions"><button type="button" class="paf-primary" data-action="use-reaction">{{localize "PF2E_AUTOMATO.chat.reaction.use"}}</button></div>{{/if}}
 {{/if}}
 </div>

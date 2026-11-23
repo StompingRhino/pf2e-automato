@@ -105,8 +105,8 @@
         "criticalSuccess": "Крит. успех"
       },
       "reaction": {
-        "hint": "Ответное действие «{item}»: {before} → {after}",
-        "hintHidden": "Ответное действие «{item}»: можно использовать",
+        "hint": "Итог: {before} → {after}",
+        "hintHidden": "Можно использовать",
         "popup": "{item} ({actor}): {before} → {after}",
         "popupHidden": "{item} ({actor}): можно использовать ответное действие",
         "windowTitle": "Ответное действие",

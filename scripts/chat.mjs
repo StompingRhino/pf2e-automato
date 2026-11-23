@@ -343,7 +343,7 @@ export function buildReactionViewModel(message, user, env = null) {
   const showDegrees = !!user.isGM || (env.metagame ?? { results: true }).results;
   const degree = (k) => t(`reactions.degree.${DEGREES[r[k]]}`);   // «попадание/промах», как в окне
   return {
-    text: showDegrees ? t("chat.reaction.hint", { item, before: degree("before"), after: degree("after") }) : t("chat.reaction.hintHidden", { item }),
+    text: showDegrees ? t("chat.reaction.hint", { item, before: degree("before"), after: degree("after") }) : r.used ? null : t("chat.reaction.hintHidden", { item }),
     popup: showDegrees
       ? t("chat.reaction.popup", { item, actor: r.actorName ?? env.uuidName(r.actor) ?? "", before: degree("before"), after: degree("after") })
       : t("chat.reaction.popupHidden", { item, actor: r.actorName ?? env.uuidName(r.actor) ?? "" }),

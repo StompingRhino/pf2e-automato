@@ -1,9 +1,9 @@
 {
   "PF2E_AUTOMATO": {
     "reactions": {
-      "hint": "{actor}: \"{item}\" ({bonus} AC). Attack by \"{attacker}\": reaction available.",
+      "hint": "Attack by \"{attacker}\": {bonus} AC.",
       "use": "Use reaction",
-      "used": "Reaction used: the outcome of this attack was recalculated.",
+      "used": "Used: the outcome of this attack was recalculated.",
       "spent": "The reaction is already spent this round.",
       "forbidden": "An effect forbids using reactions.",
       "encumbered": "Nimble Dodge is unavailable while encumbered.",

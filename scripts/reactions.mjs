@@ -161,7 +161,7 @@ function content(h) {
   const text = L("reactions.hint", { actor: esc(h.actorName), item: esc(h.itemName), bonus: signed(h.bonus), attacker: esc(h.attackerName) });
   const tail = h.used ? `<p>${L("reactions.used")}</p>${h.rerolled ? `<p>${L("reactions.rerolled")}</p>` : ""}` : "";
   // карточка «Мастерской»; строку исхода и кнопку chat.mjs renderBlock вставляет внутрь неё
-  return card(`<p>${text}</p>${tail}`, "", headOf("reaction"));
+  return card(`<p>${text}</p>${tail}`, "", { ...headOf("reaction"), ...(h.itemName && { title: esc(h.itemName) }) });   // шапка — название черты с листа
 }
 
 export async function onAttackMessage(message) {
