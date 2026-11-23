@@ -89,10 +89,18 @@ export function planPersistent(list, degrees, challenge) {
 /** Чистая: различные ссылки урона (по формуле, иначе по тексту) без нанесённых правилом; одна — без подписи формулы, несколько — с подписью.
  *  links у кнопки — все ссылки с той же формулой (одна формула в абзацах «Провал» и «Крит. провал» — одна кнопка на обе степени). */
 const RECHARGE = /recharge|перезаряд/i;
+/** Чистая: ссылка — урон. @Damage несёт формулу в data-damage-roll; [[/r]] pf2e помечает пустым data-damage-roll — уроном он бывает только с типом
+ *  в скобках («2d6[fire]», «{1d4}[persistent,bleed]»), голое «1d4» — длительность, число раундов, перезарядка (Летаргический яд: «1d4 часа»). */
+// ponytail: голый [[/r 2d6]] без типа pf2e тоже считает уроном (looksLikeDamageRoll) — ~10 предметов (урон себе/предмету); кнопки у них нет,
+// ссылка остаётся. Нужна точнее — различать по флейвору/контексту абзаца.
+export const isDamageLink = (a) => {
+  const d = a?.dataset ?? {};
+  return !RECHARGE.test(d.flavor ?? "") && (!!d.damageRoll || /\[[^\]]+\]/.test(d.formula ?? ""));
+};
 export function damageButtons(links, label, skip = new Set(), persistent = () => null, persistentLabel = label) {
   const seen = new Map(), out = [];
   for (const a of links) {
-    if (RECHARGE.test(a.dataset?.flavor ?? "")) continue;   // «перезарядка через 1d4 раунда» — не урон (pf2e помечает [[/r]] пустым data-damage-roll)
+    if (!isDamageLink(a)) continue;
     const text = (a.textContent ?? "").trim(), key = a.dataset?.formula ?? text;
     if (coveredByRule(a.dataset?.damageRoll, skip)) continue;
     if (seen.has(key)) { seen.get(key).links.push(a); continue; }
@@ -221,7 +229,7 @@ function bind(message, html) {
     if (first && !place.contains(first) && first.compareDocumentPosition(place) & Node.DOCUMENT_POSITION_FOLLOWING) (first.closest(".spell-button") ?? first).before(place);
     if (gated) {
       for (const b of html.querySelectorAll(`${SEL.spellDamage}, ${SEL.spellSave}`)) b.hidden = true;
-      for (const a of card?.querySelectorAll(SEL.damageRoll) ?? []) if (!RECHARGE.test(a.dataset?.flavor ?? "")) dim(a, L("chat.afterArea"));   // урон — после области, ссылка не обходит порядок
+      for (const a of card?.querySelectorAll(SEL.damageRoll) ?? []) if (isDamageLink(a)) dim(a, L("chat.afterArea"));   // урон — после области, ссылка не обходит порядок
       return;
     }
   }
@@ -233,7 +241,14 @@ function bind(message, html) {
   const types = new Set(Object.keys(CONFIG.PF2E?.damageTypes ?? {}));
   const typeName = (t) => game.i18n.localize(CONFIG.PF2E.damageTypes[t] ?? t).toLocaleLowerCase();
   const pers = modeOf("apply") === "off" ? () => null : (a) => { const p = persistentOf(a.dataset?.formula, types); return p && { ...p, text: `${p.formula} ${typeName(p.damageType)}` }; };   // apply off — модуль не накладывает: обычный бросок pf2e
-  const all = damageButtons([...(card?.querySelectorAll(SEL.damageRoll) ?? [])], game.i18n.localize("PF2E.DamageLabel"), skip, pers, L("chat.persistent.button"));
+  // формулу system.damage расходника (Зелье исцеления: 1d8 лечения) pf2e бросает сам при «Использовать» — кнопка «Урон» была бы вторым путём (двойное лечение)
+  const own = item.type === "consumable" && item.system?.damage?.formula ? coreFormula(item.system.damage.formula) : null;
+  const links = [...(card?.querySelectorAll(SEL.damageRoll) ?? [])].filter((a) => {
+    if (!own || coreFormula(a.dataset?.damageRoll || a.dataset?.formula) !== own) return true;
+    if (html.contains(a)) dim(a, L("chat.onConsume"));
+    return false;
+  });
+  const all = damageButtons(links, game.i18n.localize("PF2E.DamageLabel"), skip, pers, L("chat.persistent.button"));
   // брошенная формула — её шаг пройден (у не-заклинаний формулы независимы: «6d8, затем 3d8 каждый ход» — прячем только брошенную)
   const done = new Set(rolls.damages.map((m) => rolledCore(m.rolls?.[0])));
   const isDone = (x) => !x.pers && done.has(coreFormula(x.a.dataset?.damageRoll || x.a.dataset?.formula));

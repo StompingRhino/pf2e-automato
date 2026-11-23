@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 globalThis.game ??= {};
-const { damageButtons, ruleFormulas, normFormula, coreFormula, rolledCore, spellDamageDone } = await import("../scripts/damage-button.mjs");
+const { damageButtons, ruleFormulas, normFormula, coreFormula, rolledCore, spellDamageDone, isDamageLink } = await import("../scripts/damage-button.mjs");
 const link = (formula, text, damageRoll = formula) => ({ dataset: { formula, damageRoll }, textContent: text });
 
 test("damageButtons: одинаковая формула в разных абзацах — одна кнопка со всеми ссылками", () => {
@@ -82,4 +82,14 @@ test("шаг урона: перезарядка не кнопка урона; ф
   assert.equal(spellDamageDone({ damages: 0, sustained: false, multiAttack: false }), false);
   assert.equal(spellDamageDone({ damages: 2, sustained: true, multiAttack: false }), false);
   assert.equal(spellDamageDone({ damages: 1, sustained: false, multiAttack: true }), false);
+});
+
+test("isDamageLink: @Damage и [[/r]] с типом — урон; голый [[/r 1d4]] (длительность, раунды, перезарядка) — нет", () => {
+  const r = (formula, flavor) => ({ dataset: { damageRoll: "", formula, ...(flavor && { flavor }) } });
+  assert.equal(isDamageLink({ dataset: { damageRoll: "1d8[healing]", formula: "{1d8[healing]}" } }), true);
+  assert.equal(isDamageLink(r("2d6[fire]")), true);
+  assert.equal(isDamageLink(r("{1d4}[persistent,bleed]")), true);
+  assert.equal(isDamageLink(r("1d4", "hours")), false);            // Летаргический яд: «1d4 часа»
+  assert.equal(isDamageLink(r("1d4", "Recharge Spirit Breath")), false);
+  assert.deepEqual(damageButtons([r("1d4", "Lethargy Poison Duration")], "Урон"), []);
 });
