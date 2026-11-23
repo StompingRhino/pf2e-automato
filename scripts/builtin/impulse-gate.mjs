@@ -19,7 +19,7 @@ import { usesLeft, withUse, tracksFor, clock } from "../cast.mjs";
 import { familiarsOf, familiarToken } from "../familiar.mjs";
 import { AURA_SLUG } from "./kinetic-aura.mjs";
 import { mechOf, rechargeEntry, isUseItem, USE_ITEMS } from "../mech.mjs";
-import { critRecharges, isBreath, rollDice, rollData, rechargeLeft, hitOf, lastAct, reqFails, holdsFrom, breaksRage, raging, instinctElements, cellsOverlap, STARTERS } from "./limit-text.mjs";
+import { critRecharges, isBreath, rollDice, rollData, rechargeLeft, hitOf, lastAct, reqFails, holdsFrom, breaksRage, raging, instinctElements, cellsOverlap, STARTERS, quickTempered } from "./limit-text.mjs";
 
 const traitsOf = (item) => item?.system?.traits?.value ?? [];
 export const TORCH_EFFECT = "Compendium.pf2e.feat-effects.Item.61qS86bjxg8HCJBY";
@@ -35,6 +35,8 @@ export const turnKey = (combat) => (combat?.started ? `${combat.id}:${combat.rou
  * Таблица. applies(c) — лимит касается этого предмета; fails(c) — требование нарушено; mark(c) — [флаг актёра, значение] после законного использования.
  * Порядок важен: первая сработавшая строка — причина (ключ builtin.limit.<reason>). c.kinetic === false — у актёра нет Channel Elements (строки импульса молчат).
  */
+/** Начало ярости: действие Rage / Quick-Tempered (не одноимённое классовое умение — его выкладка в чат ярость не начинает); при уступке pf2e-automations не ведём. */
+const starts = (c) => STARTERS.has(c.slug) && c.itemType === "action" && !c.paRage;
 export const LIMITS = [
   { reason: "noAura", applies: (c) => c.kinetic !== false && c.traits.includes("impulse"), fails: (c) => !c.aura, vars: (c) => ({ channel: c.channelName }) },
   { reason: "noHand", applies: (c) => c.kinetic !== false && c.traits.includes("impulse"), fails: (c) => c.handsFree === 0 },   // описание черты impulse: «only if you have a hand free»; pf2e считает hands.free по ancestry.hands и удерживаемым предметам (pf2e.mjs:35351)
@@ -46,6 +48,10 @@ export const LIMITS = [
   { reason: "overflow", applies: (c) => c.kinetic !== false && c.traits.includes("impulse") && c.traits.includes("overflow"), fails: (c) => !!c.round && c.overflowRound === c.round, mark: (c) => c.round && ["overflowRound", c.round] },
   { reason: "flourish", applies: (c) => c.traits.includes("flourish"), fails: (c) => !!c.round && c.flourishRound === c.round, mark: (c) => c.round && ["flourishRound", c.round], vars: () => ({ trait: traitName("flourish") }) },   // TraitDescriptionFlourish: одно действие с чертой за раунд
   { reason: "auraActive", applies: (c) => c.slug === "channel-elements", fails: (c) => c.auraEffect },   // «Your kinetic gate isn't active»
+  // Rage: «Requirements You aren't Fatigued or raging»; Quick-Tempered — «You Rage», те же требования и свои (не нагружен, без тяжёлой брони). Эффект кладёт кнопка pf2e на карточке
+  { reason: "raging", applies: (c) => starts(c), fails: (c) => c.raging },
+  { reason: "fatigued", applies: (c) => starts(c), fails: (c) => c.fatigued },
+  { reason: "quickTempered", applies: (c) => starts(c) && c.slug === "quick-tempered", fails: (c) => !quickTempered(c.qt ?? {}) },   // состояние неизвестно — не блок
   { reason: "torches", applies: (c) => c.slug === "eternal-torch", fails: (c) => c.torches >= c.conMod, vars: (c) => ({ n: c.conMod }) },   // «maximum number of Eternal Torches equal to your Constitution modifier»; единственный предмет с таким лимитом (группы нет)
   { reason: "hex", applies: (c) => c.traits.includes("hex"), fails: (c) => !!c.turn && c.hexTurn === c.turn, mark: (c) => c.turn && ["hexTurn", c.turn] },
   { reason: "inSpace", applies: (c) => c.slug === "restorative-familiar" && c.actorType === "familiar", fails: (c) => c.inSpace === false },   // «It must be in your space»; единственная такая способность (группы нет)
@@ -151,10 +157,11 @@ function ctxOf(actor, item) {
   const inCombat = !!round;
   let rcRolled = null;
   return {
-    traits: traitsOf(item), slug: item.slug, actorType: actor.type, reaction: isReaction(item), round, turn: turnKey(combat), inCombat,
+    traits: traitsOf(item), slug: item.slug, itemType: item.type, actorType: actor.type, reaction: isReaction(item), round, turn: turnKey(combat), inCombat,
     kinetic: actor.type === "character" && actor.itemTypes.action.some((a) => a.slug === "channel-elements"),
     handsFree: actor.system?.hands?.free?.value, overflowRound: f.overflowRound, hexTurn: f.hexTurn, flourishRound: f.flourishRound,
-    raging: raging(actor), paRage: paHas("rage"), targetCount: game.user?.targets?.size ?? 0, freqSlot: f[`fq_${item.id}`],
+    raging: raging(actor), paRage: paHas("rage"), get fatigued() { return !!actor.hasCondition?.("fatigued"); },
+    get qt() { return { encumbered: !!actor.hasCondition?.("encumbered"), heavy: actor.wornArmor?.category === "heavy", invulnerable: actor.items.some((i) => i.slug === "invulnerable-rager") }; }, targetCount: game.user?.targets?.size ?? 0, freqSlot: f[`fq_${item.id}`],
     get now() { return clock(actor); },
     get instinctEls() { return instinctOf(actor); },
     get clarity() { return clarityOf(f, turnKey(combat), game.time.worldTime); },

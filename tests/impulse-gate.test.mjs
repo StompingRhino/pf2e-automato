@@ -88,6 +88,20 @@ test("rageTrait: черта rage — только в ярости; только 
   assert.equal(reasonOf({ ...c, paRage: true }), null);
 });
 
+test("начало ярости (Rage, Quick-Tempered): в ярости / утомлён — блок; Вспыльчивость — ещё нагрузка и тяжёлая броня", () => {
+  const c = { traits: ["concentrate", "emotion", "rage"], slug: "rage", itemType: "action", actorType: "character", raging: false, fatigued: false };
+  assert.equal(reasonOf(c), null);
+  assert.equal(reasonOf({ ...c, raging: true }), "raging");
+  assert.equal(reasonOf({ ...c, fatigued: true }), "fatigued");
+  assert.equal(reasonOf({ ...c, raging: true, paRage: true }), null);   // ярость ведёт pf2e-automations
+  assert.equal(reasonOf({ ...c, raging: true, itemType: "feat" }), null);   // классовое умение «Ярость» — описание, не начало ярости
+  const q = { ...c, slug: "quick-tempered", qt: { encumbered: false, heavy: false } };
+  assert.equal(reasonOf(q), null);
+  assert.equal(reasonOf({ ...q, qt: { encumbered: true } }), "quickTempered");
+  assert.equal(reasonOf({ ...q, qt: { heavy: true, invulnerable: true } }), null);
+  assert.equal(reasonOf({ ...q, fatigued: true }), "fatigued");
+});
+
 test("inSpace: false — блок; null/true — нет; другой slug и не фамильяр — не трогаем", () => {
   const c = { traits: [], slug: "restorative-familiar", actorType: "familiar", inSpace: false };
   assert.equal(reasonOf(c), "inSpace");

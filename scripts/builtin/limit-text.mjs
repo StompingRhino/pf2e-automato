@@ -185,6 +185,8 @@ export function reqSig(html) {
 
 export const RAGE_SLUG = "effect-rage";
 export const STARTERS = new Set(["rage", "quick-tempered"]);
+/** Чистая: требование «Вспыльчивости» — не нагружен и без тяжёлой брони (или «Неуязвимый яростный»), как Note pf2e. */
+export const quickTempered = ({ encumbered, heavy, invulnerable }) => !encumbered && (!heavy || invulnerable);
 const ELEMENTS = ["air", "earth", "fire", "metal", "water", "wood"];
 // слуги действий, которые в ярости получают черту rage (Seek — разрешён текстом Ярости; Soul Blessing — «While under the effect of Rage … gains the rage trait»)
 const RAGE_OK = new Set(["seek", "soul-blessing", "golden-souled-yang-na", ...STARTERS]);

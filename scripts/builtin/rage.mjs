@@ -1,17 +1,19 @@
 // Ярость. Когда эффект «Ярость» (feat-effects, slug effect-rage) заканчивается, на минуту действует «Иммунитет к временным ОЗ от Ярости»: нового
 // всплеска ОЗ от действия Ярость не получить. Признак — slug эффекта: им пользуются все ярости (барбарские инстинкты, «Ярость» NPC — через selfEffect).
 // Остальное, чего нет в pf2e (урон, ВОЗ, скорость, удары инстинкта pf2e считает сам по self:effect:rage):
-// - карточка «Ярость»/«Вспыльчивость» (self-effect) — эффект вешается сам, если выполнены требования (не в ярости, не утомлён); иначе шёпот;
-// - второй эффект ярости не создаётся (кнопка pf2e «Применить» на карточке после автоприменения);
+// - эффект кладёт кнопка pf2e «Применить эффект» на карточке «Ярость»/«Вспыльчивость», как у всех действий с эффектом на себя; требования
+//   (не в ярости, не утомлён; у Вспыльчивости — не нагружен и без тяжёлой брони) блокируют саму карточку (impulse-gate, строки raging/fatigued/quickTempered);
+// - временные ОЗ — при создании эффекта ярости любым путём (кнопка pf2e, перетаскивание): правило pf2e их не начисляет;
+// - второй эффект ярости не создаётся;
 // - инициатива с «Вспыльчивостью» — шёпот с кнопкой (свободное действие по желанию игрока);
 // - конец ярости: потеря сознания и конец боя (минуту отсчитывает pf2e);
 // - действие с «концентрацией» без «ярости» в ярости: карточку использования блокирует impulse-gate (строка LIMITS «rage», общий код — limit-text.mjs); здесь — шёпот только там, где карточки нет (проверка навыка/Восприятия).
 import { L, MOD, queue } from "../util.mjs";
 import { addEffect, cardButton, esc, paHas, whisper } from "./lib.mjs";
-import { RAGE_SLUG, STARTERS, isRage, raging, breaksRage as breaksRageAny } from "./limit-text.mjs";
+import { RAGE_SLUG, isRage, raging, breaksRage as breaksRageAny, quickTempered } from "./limit-text.mjs";
 import { isUseCard, rageExtras } from "./impulse-gate.mjs";
 
-export { RAGE_SLUG, isRage };
+export { RAGE_SLUG, isRage, quickTempered };
 export const KEY = "rage-immunity";
 export const IMMUNITY = "Compendium.pf2e.feat-effects.Item.MaepXeSHiMoWDm7u";
 export const RAGE = "Compendium.pf2e.feat-effects.Item.z3uyCMBddrPK5umr";
@@ -19,9 +21,6 @@ const USE_TYPES = new Set([undefined, "self-effect", "spell-cast", "skill-check"
 
 /** Чистая: почему нельзя впасть в ярость -> "raging" | "fatigued" | null. */
 export const blockedBy = ({ raging, fatigued }) => (raging ? "raging" : fatigued ? "fatigued" : null);
-
-/** Чистая: «Вспыльчивость» доступна при инициативе — не нагружен и без тяжёлой брони (или «Неуязвимый яростный»), как Note pf2e. */
-export const quickTempered = ({ encumbered, heavy, invulnerable }) => !encumbered && (!heavy || invulnerable);
 
 /** Чистая: использование (не бросок атаки/урона) нарушает ярость; правила — limit-text.breaksRage. */
 export const breaksRage = (c) => USE_TYPES.has(c.type) && breaksRageAny(c);
@@ -50,9 +49,10 @@ const endRage = (actor) => queue(`actor:${actor.uuid}`, async () => {
   for (const e of actor.itemTypes.effect.filter(isRage)) await e.delete();
 });
 
-/** createItem у ведущего: «Без сознания» прекращает ярость. */
+/** createItem у ведущего: «Без сознания» прекращает ярость; новый эффект ярости — временные ОЗ. */
 export async function onCreate(item) {
   if (item.type === "condition" && item.slug === "unconscious" && raging(item.actor) && !paHas("rage")) await endRage(item.actor);
+  if (isRage(item) && item.actor && !paHas("rage")) await tempHP(item.actor, item);
 }
 
 /** Конец боя (сцены) прекращает ярость участников. */
@@ -61,33 +61,19 @@ export async function onCombatEnd(combat) {
   for (const c of combat.combatants) if (raging(c.actor)) await endRage(c.actor);
 }
 
-async function enter(actor, item, token) {
-  const why = blocked(actor);
-  if (why) return void await whisper(actor, L(`builtin.rage.${why}`, { name: esc(actor.name) }), "rage");
-  const src = (await fromUuid(RAGE))?.toObject();
-  if (!src) return;
-  delete src._id;
-  const at = { actor: actor.uuid, token: token?.uuid ?? null };
-  src.system.context = { origin: { ...at, item: item.uuid, spellcasting: null, rollOptions: item.getOriginData?.().rollOptions ?? [] }, target: at, roll: null };
-  const effect = await addEffect(actor, src, "rage");
-  if (!effect) return;
-  // ВОЗ вручную: pf2e TempHPRuleElement.onCreate резолвит @actor.flags.system.rageTempHP до того,
-  // как ActiveEffectLike (phase: beforeDerived) его выставляет — порядок вычисления правил.
-  // tempSource = id эффекта, чтобы TempHPRuleElement.onDelete сбросил ВОЗ при удалении.
-  const tempHP = (actor.level ?? 0) + (actor.system.abilities.con.mod ?? 0);
-  if (tempHP > 0 && tempHP > (actor.system.attributes.hp.temp ?? 0)) {
-    await actor.update({ "system.attributes.hp.temp": tempHP, "system.attributes.hp.tempSource": effect.id });
-  }
+/** ВОЗ вручную: pf2e TempHPRuleElement.onCreate резолвит @actor.flags.system.rageTempHP до того, как ActiveEffectLike (phase: beforeDerived)
+ *  его выставляет — порядок вычисления правил. tempSource = id эффекта, чтобы TempHPRuleElement.onDelete сбросил ВОЗ при удалении. */
+async function tempHP(actor, effect) {
+  // «can't gain temporary Hit Points from using the Rage action again for 1 minute» — иммунитет кладёт onDelete
+  if (actor.itemTypes.effect.some((e) => e.flags?.[MOD]?.meta?.key === KEY || e.slug === "effect-rage-temporary-hit-points-immunity")) return;
+  const hp = (actor.level ?? 0) + (actor.system.abilities?.con?.mod ?? 0);
+  if (hp > 0 && hp > (actor.system.attributes.hp.temp ?? 0)) await actor.update({ "system.attributes.hp.temp": hp, "system.attributes.hp.tempSource": effect.id });
 }
 
-/** Сообщения чата у ведущего: карточка Ярости, инициатива, использование с концентрацией. */
+/** Сообщения чата у ведущего: инициатива, использование с концентрацией. */
 export async function onMessage(message) {
   const actor = message.actor, ctx = message.flags?.pf2e?.context;
   if (!actor || paHas("rage")) return;
-  if (ctx?.type === "self-effect") {
-    const item = actor.items.get(ctx.item);
-    if (STARTERS.has(item?.slug)) return enter(actor, item, message.token);
-  }
   if (ctx?.type === "initiative") {
     const qt = actor.itemTypes?.action.find((i) => i.slug === "quick-tempered");
     if (!qt || blocked(actor)) return;
@@ -101,7 +87,7 @@ export async function onMessage(message) {
   if (breaksRage({ type: ctx?.type, traits, slug, ...rageExtras(actor) })) await whisper(actor, L("builtin.rage.concentrate", { name: esc(actor.name), what: esc(item?.name ?? game.i18n.localize(game.pf2e?.actions?.get(slug)?.name ?? slug ?? "")) }), "rage");
 }
 
-/** Кнопка «Впасть в ярость» в шёпоте: у нажавшего — действие «Вспыльчивость» pf2e (карточка self-effect, эффект вешает ведущий). */
+/** Кнопка «Впасть в ярость» в шёпоте: у нажавшего — действие «Вспыльчивость» pf2e (карточка self-effect с кнопкой pf2e «Применить эффект»). */
 export function bind(message, html) {
   const root = html instanceof HTMLElement ? html : html?.[0];
   root?.querySelectorAll?.("[data-af-rage]").forEach((b) => b.addEventListener("click", async () => {

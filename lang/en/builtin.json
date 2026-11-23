@@ -56,8 +56,6 @@
         "hint": "<p><b>{shape}</b>: the next spell {name} casts gets this spellshape. The effect is spent by the cast and ends with the next cast or at the end of the turn.</p>"
       },
       "rage": {
-        "raging": "<p><b>{name}</b> is already raging and can't Rage again (requirement: not raging).</p>",
-        "fatigued": "<p><b>{name}</b> is fatigued and can't Rage (requirement: not fatigued). The effect wasn't applied; the GM can apply it from the card button.</p>",
         "quick": "<p><b>Quick-Tempered</b>: {name} rolled initiative and can Rage as a free action.</p>",
         "button": "Rage",
         "concentrate": "<p><b>{name}</b> is raging: “{what}” has the concentrate trait without rage — not allowed while raging (Seek is).</p>"
@@ -83,6 +81,9 @@
         "noAura": "{name}: your kinetic aura isn't active — {channel} first. Alt-click to use anyway.",
         "noHand": "{name}: no hand free to shape the elemental flow (impulses need a free hand). Free a hand. Alt-click to use anyway.",
         "overflow": "{name}: you already used an overflow impulse this round (one per round). Alt-click to use anyway.",
+        "raging": "{name}: you are already raging (requires not raging). A second Rage effect is never applied.",
+        "fatigued": "{name}: you are fatigued (requires not fatigued). Alt-click to use anyway.",
+        "quickTempered": "{name}: you are encumbered or wearing heavy armor (requires neither). Alt-click to use anyway.",
         "auraActive": "{name}: your kinetic aura is already active (requires your kinetic gate to be inactive). Dismiss it first. Alt-click to use anyway.",
         "torches": "{name}: the maximum number of torches is already active (Constitution modifier, {n}). Dismiss one. Alt-click to use anyway.",
         "hex": "{name}: you already used a hex this turn (one per turn, a second attempt fails). Alt-click to use anyway.",
