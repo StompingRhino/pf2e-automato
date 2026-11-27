@@ -115,11 +115,12 @@ function split(f, row) {
   GROUP.set(row, { units: { ...(GROUP.get(row)?.units ?? {}) } });
 }
 
-/* Срок: пусто — срока нет. Единица живёт отдельно от значения (units[key], пока значения нет): перенабор «6 часов» не сбрасывает её в раунды. */
-function durSet(o, key, field, v, units, uk = key) {
+/* Срок: пусто — срока нет. Единица живёт отдельно от значения (units[key], пока значения нет): перенабор «6 часов» не сбрасывает её в раунды. dice — для стадии (1d4). */
+function durSet(o, key, field, v, units, uk = key, dice = false) {
   const cur = o[key] ?? null;
   if (field === "value") {
-    const n = intOrRaw(v);
+    const s = String(v ?? "").trim();
+    const n = dice && /^\d+d\d+$/i.test(s) ? s.toLowerCase() : intOrRaw(v);
     if (n === "") { if (cur) units[uk] = cur.unit; o[key] = null; }
     else o[key] = { value: n, unit: cur?.unit ?? units[uk] ?? "rounds" };
   } else { units[uk] = v; if (cur) o[key] = { value: cur.value, unit: v }; }
@@ -169,7 +170,7 @@ export function afflSet(f, row, name, v, opts = {}) {
     else if (a === "maxDuration" || a === "onset") durSet(def, a, b, v, units);
     else if (a === "s" && def.stages[Number(b)]) {
       const s = def.stages[Number(b)];
-      if (c === "duration") durSet(s, "duration", d, v, units, `s.${b}`);
+      if (c === "duration") durSet(s, "duration", d, v, units, `s.${b}`, true);
       else if (c === "text") s.text = String(v ?? "");
       else if (c === "damage" && s.damage[Number(d)]) s.damage[Number(d)][e] = e === "formula" ? String(v ?? "") : v;
       else if (c === "persistent" && s.persistent) { if (d === "dc") opt(s.persistent, "dc", v); else s.persistent[d] = d === "formula" ? String(v ?? "") : v; }

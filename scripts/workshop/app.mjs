@@ -108,7 +108,8 @@ function stepFields(row, p, names, card, ctx) {
       F.text(`${p}.durValue`, t("sheet.duration"), row.durValue, { inpCls: "ws-num", placeholder: "1d4" }),
       F.sel(`${p}.durUnit`, t("workshop.au.unit"), row.durUnit, sheetChoices("unit", ["rounds", "minutes", "hours", "days"])),
       F.sel(`${p}.durExpiry`, t("workshop.expires"), row.durExpiry, { "": t("sheet.expiry.none"), "turn-start": t("sheet.expiry.start"), "turn-end": t("sheet.expiry.end") }),
-      F.sel(`${p}.durOf`, t("workshop.au.durOf"), row.durOf, sheetChoices("of", ["origin", "target"]))
+      F.sel(`${p}.durOf`, t("workshop.au.durOf"), row.durOf, sheetChoices("of", ["origin", "target"])),
+      ...(row.text === "unconscious" ? [F.chk(`${p}.standing`, t("workshop.au.standing"), !!row.standing, { tip: t("workshop.au.standingTip") })] : [])
     );
   } else if (row.kind === "effect") {
     const own = au.isOwn(row);   // «свой»: effect.mods — список свойств; «готовый»: UUID эффекта из компендиума
@@ -122,7 +123,7 @@ function stepFields(row, p, names, card, ctx) {
     out.push(F.text(`${p}.durValue`, t(own ? "workshop.au.mod.dur" : "workshop.au.effDur"), row.durValue, { inpCls: "ws-num", placeholder: "1d4", req: own, tip: t(own ? "workshop.au.mod.durHint" : "workshop.au.effDurHint") }),
       F.sel(`${p}.durUnit`, t("workshop.au.unit"), row.durUnit, sheetChoices("unit", ["rounds", "minutes", "hours", "days"])),
       F.sel(`${p}.durExpiry`, t("workshop.expires"), row.durExpiry, { "": t("sheet.expiry.none"), "turn-start": t("sheet.expiry.start"), "turn-end": t("sheet.expiry.end") }),
-      ...(own ? [F.sel(`${p}.durOf`, t("workshop.au.durOf"), row.durOf, sheetChoices("of", ["origin", "target"]))] : []));
+      ...(own || String(row.durValue ?? "").trim() ? [F.sel(`${p}.durOf`, t("workshop.au.durOf"), row.durOf, sheetChoices("of", ["origin", "target"]))] : []));
   }
   else if (row.kind === "damage") out.push(
     F.text(`${p}.text`, t("workshop.au.persFormula"), row.text, { placeholder: "2d6" }),
@@ -216,7 +217,7 @@ function afflFields(row, p, { a, env, plates }) {
     const conds = { chips: { label: t("workshop.au.affl.conditions"), list: s.conditions.map((c, j) => ({ name: condLabel(c.slug), value: c.value ?? (condValued(c.slug) ? 1 : ""), stepper: c.value != null || condValued(c.slug), dec: btn(`condStep:${st.i}:${j}:-1`), inc: btn(`condStep:${st.i}:${j}:1`), rm: btn(`condRm:${st.i}:${j}`) })),
       add: full ? null : F.sel(`${S}.cond.add`, t("workshop.au.affl.addCond"), "", { "": t("workshop.au.affl.addCond"), ...Object.fromEntries(grantable().filter((c) => !s.conditions.some((x) => x.slug === c.slug)).map((c) => [c.slug, c.label])) }, bare) }, label: "" };
     const pseudo = s.modsRow, mods = modsField(pseudo, `${S}`, (verb, arg) => btn(`${verb}:${st.i}:${arg}`), "", t("workshop.au.affl.noMods"));
-    const body = [{ pair: { label: t("workshop.au.affl.stageDur"), fields: [F.num(`${S}.duration.value`, t("workshop.au.affl.stageDur"), s.duration.value, { ...bare, min: 1, placeholder: "—" }), F.sel(`${S}.duration.unit`, t("workshop.au.unit"), s.duration.unit, units, bare)] }, label: "" },
+    const body = [{ pair: { label: t("workshop.au.affl.stageDur"), fields: [F.text(`${S}.duration.value`, t("workshop.au.affl.stageDur"), s.duration.value, { ...bare, inpCls: "ws-num", placeholder: "1d4" }), F.sel(`${S}.duration.unit`, t("workshop.au.unit"), s.duration.unit, units, bare)] }, label: "" },
       dmg, pers, conds, { ...mods, mods: { ...mods.mods, label: t("workshop.au.affl.mods") } }, F.text(`${S}.text`, t("workshop.au.affl.text"), s.text, { cls: "ws-full", tip: t("workshop.au.affl.textTip") })];
     return { ...base, rm, openOp: open, body };
   });
@@ -249,7 +250,12 @@ function chooseFields(row, p) {
     list: c.options.map((o) => ({ i: o.i, fields: [F.text(`${q}.opt.${o.i}.value`, t("workshop.au.chs.value"), o.value, { bare: true, placeholder: "fire" }), F.text(`${q}.opt.${o.i}.label`, t("workshop.au.chs.label"), o.label, { bare: true, placeholder: t("workshop.au.chs.label") }),
       F.text(`${q}.opt.${o.i}.when`, t("workshop.au.chs.when"), o.when, { bare: true, placeholder: t("workshop.au.chs.whenHint") })], rm: { path: p, op: `opt:opt.${o.i}.remove` } })),
     add: { path: p, op: "opt:opt.add" }, hint: t("workshop.au.chs.hint") }, label: t("workshop.au.chs.optionsLabel") });
-  else if (c.from !== "conditions") out.push(F.num(`${q}.range`, t("workshop.au.chs.range"), c.range, { min: 5, placeholder: "—" }), F.seg(`${q}.of`, t("workshop.au.chs.of"), c.of, [["", t("workshop.au.chs.ofOrigin")], ["target", t("workshop.au.chs.ofTarget")]]));
+  else if (c.from !== "conditions") out.push(
+    F.num(`${q}.range`, t("workshop.au.chs.range"), c.range, { min: 5, placeholder: "—" }),
+    F.seg(`${q}.of`, t("workshop.au.chs.of"), c.of, [["", t("workshop.au.chs.ofOrigin")], ["target", t("workshop.au.chs.ofTarget")]]),
+    ...(c.from === "allies" || c.from === "creatures" ? [F.chk(`${q}.withSelf`, t("workshop.au.chs.withSelf"), c.withSelf)] : []),
+    F.text(`${q}.where`, t("workshop.au.chs.where"), c.where, { cls: "ws-full", placeholder: "self:trait:undead", hint: t("workshop.au.chs.whereHint") })
+  );
   return out;
 }
 
@@ -544,16 +550,21 @@ export class Workshop extends HandlebarsApplicationMixin(ApplicationV2) {
     if (mac) return au.macroSetForm(f.macros[Number(mac[1])], v);
     const m = /^(.*)\.(kind|text)$/.exec(path);
     const row = m && m[1] !== "f" && m[1] !== "f.zone" ? foundry.utils.getProperty(a, m[1]) : null;
+    if (path.endsWith(".ck.roll")) v = v === true || v === "true" ? "system" : "";
+    else if (path === "f.zone.until") v = v === true || v === "true" ? "next-turn-end" : "";
     if (row && "durOf" in row) {   // строка шага: смена вида и текста — в ядре
       if (m[2] === "kind") { au.setStepKind(row, v); if (v === "affliction") af.afflInit(row, f); }
       else au.setStepText(row, v, row.kind === "condition" && condValued(v));
     } else foundry.utils.setProperty(a, path, v);
-    if (new RegExp(String.raw`^${au.ROOT}\.targets$`).test(path) && v === "self") a.sel = null;
+    if (new RegExp(String.raw`^${au.ROOT}\.targets$`).test(path)) {
+      if (v === "self") { a.sel = null; f.pulse = ""; }
+      else f.reshape = false;
+    }
     // событие без цели (ход, эффект, урон по носителю): сторона «цель броска» невозможна — вернуть «владелец»
     const ev = /^(f\.ev\.\d+)\.on$/.exec(path);
     if (ev) au.evOnChanged(foundry.utils.getProperty(a, ev[1]), v);
     const sd = /^(f\.ev\.\d+)\.side$/.exec(path);   // скрытый флажок «после использования» не должен давать ошибку валидации
-    if (sd) { const e = foundry.utils.getProperty(a, sd[1]); if (v !== "self") { e.afterUse = false; e.use = false; } }
+    if (sd) { const e = foundry.utils.getProperty(a, sd[1]); if (v !== "self") { e.afterUse = false; e.use = false; } if (v !== "target") e.hold = false; }
     // проверка без цели бросается на себя; вернули цель — «на выбранных»
     const vs = new RegExp(String.raw`^(${au.ROOT})\.ck\.vsType$`).exec(path)?.[1];
     if (vs) { const m = foundry.utils.getProperty(a, vs); if (v === "none") { m.targets = "self"; m.ck.imm.on = false; } else if (m.targets === "self") m.targets = "selected"; }
@@ -792,6 +803,10 @@ export class Workshop extends HandlebarsApplicationMixin(ApplicationV2) {
       ...(into ? [{ note: t("workshop.au.cast.areaFromDesc") }] : [F.seg("area.shape", t("workshop.au.shapeLabel"), a.area.shape, Object.entries(shapes)), F.num("area.size", t("workshop.au.sizeLabel"), a.area.size, { min: 5, step: 5 })]),
       triSeg(`${P}.excludeSelf`, t("workshop.au.authorIn"), m.excludeSelf)
     );
+    if (!into && rmode !== "check") {
+      if (m.targets !== "self") targetFields.push(F.sel(`${P}.pulse`, t("workshop.au.pulse"), m.pulse, [["", t("workshop.au.pulseOpt.none")], ["same", t("workshop.au.pulseOpt.same")], ["new", t("workshop.au.pulseOpt.new")]], { tip: t("workshop.au.pulseTip") }));
+      else if (m.reshape || m.apply?.some((r) => r.kind === "choose")) targetFields.push(F.chk(`${P}.reshape`, t("workshop.au.reshape"), !!m.reshape, { tip: t("workshop.au.reshapeTip") }));
+    }
     const zn = au.zoneNote(m, t);   // zone пишется только при цели «Область»: без слова она бы пропала
     if (zn) targetFields.push(zn);
     const isSpell = item.type === "spell", html = item._source.system.description?.value, have = au.parseTemplate(html), tag = au.templateTag(area.shape, area.size);
@@ -808,6 +823,8 @@ export class Workshop extends HandlebarsApplicationMixin(ApplicationV2) {
     if (f.targets === "area" && z.on) zoneFields.push(
       F.sel("f.zone.cond", t("sheet.zoneCond"), z.cond, [["", "—"], ...allConds], { drop: "condition" }), F.num("f.zone.condValue", t("sheet.row.value"), z.condValue, { min: 1 }),
       F.text("f.zone.effect", t("sheet.zoneEffect"), z.effect, { drop: "effect", cls: "ws-grow" }), F.num("f.zone.seconds", t("sheet.seconds"), z.seconds, { min: 1 }), F.num("f.zone.rounds", t("sheet.rounds"), z.rounds, { min: 1 }),
+      F.chk("f.zone.until", t("workshop.au.zoneUntil"), z.until === "next-turn-end", { tip: t("workshop.au.zoneUntilTip") }),
+      ...(z.until === "next-turn-end" ? [F.num("f.zone.sustainMax", t("workshop.au.zoneSustainMax"), z.sustainMax, { min: 1, placeholder: "10" })] : []),
       F.chk("f.zone.noFollow", t("sheet.zoneNoFollow"), z.noFollow),
       F.sel("f.zone.enterBy", t("sheet.zoneEnterBy"), z.enterBy, [["end", t("sheet.zoneEnterEnd")], ["path", t("sheet.zoneEnterPath")]]),
       F.sel("f.zone.gone", t("sheet.zoneGone"), z.gone, [["close", t("sheet.zoneGoneClose")], ["stay", t("sheet.zoneGoneStay")]])
@@ -855,6 +872,7 @@ export class Workshop extends HandlebarsApplicationMixin(ApplicationV2) {
           F.text(`${p}.when`, t("workshop.au.ev.whenLabel"), e.when, { cls: "ws-grow ws-full", placeholder: "outcome:success, target:condition:off-guard", hint: t("workshop.au.ev.whenHint") }),
           F.chk(`${p}.once`, t("workshop.au.ev.once"), e.once, { cls: "ws-full" }),   // флажки события — столбиком, по строке на каждый
           ...(e.side === "self" && (EVENT_USE.has(e.on) || e.on === HP0) ? [F.chk(`${p}.use`, t("workshop.au.ev.use"), e.use, { cls: "ws-full" })] : []),
+          ...(e.side === "target" && ["attack-roll", "skill-check"].includes(e.on) ? [F.chk(`${p}.hold`, t("workshop.au.ev.hold"), !!e.hold, { cls: "ws-full", tip: t("workshop.au.ev.holdTip") })] : []),
           F.chk(`${p}.cost`, t("workshop.au.ev.cost"), e.cost, { cls: "ws-full" }),
           ...(e.cost ? [F.text(`${p}.free`, t("workshop.au.ev.free"), e.free, { placeholder: "skill:intimidation:rank:4", hint: t("workshop.au.ev.freeHint") })] : []),
           ...(EVENT_AFTER_USE.has(e.on) && e.side === "self" ? [F.chk(`${p}.afterUse`, t("workshop.au.ev.afterUse"), e.afterUse, { cls: "ws-full" })] : []),

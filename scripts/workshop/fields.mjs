@@ -56,7 +56,8 @@ export function fieldKit(t) {
       else out.push(F.text(`${P}.ck.vsText`, t("workshop.au.vsWhat"), k.vsText, { inpCls: "ws-num" }));
       out.push(
         F.sel(`${P}.ck.map`, t("sheet.map"), k.map, [["", "—"], ["0", "0"], ["1", "1"], ["2", "2"]]), F.text(`${P}.ck.traits`, t("sheet.traits"), k.traits), F.text(`${P}.ck.options`, t("sheet.options"), k.options),
-        chWhen(`${P}.ck`, k), ...(k.vsType === "none" ? [] : [F.chk(`${P}.ck.one`, t("sheet.oneRoll"), k.one), ...immFields(`${P}.ck.imm`, k.imm)])
+        chWhen(`${P}.ck`, k),
+        ...(k.vsType === "none" ? [] : [F.chk(`${P}.ck.roll`, t("workshop.au.sysRoll"), k.roll === "system", { tip: t("workshop.au.sysRollTip") }), ...(k.roll === "system" ? [] : [F.chk(`${P}.ck.one`, t("sheet.oneRoll"), k.one)]), ...immFields(`${P}.ck.imm`, k.imm)])
       );
       return out;
     }

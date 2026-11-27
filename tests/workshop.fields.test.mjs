@@ -85,6 +85,7 @@ const SNAP = {
     "f.ck.traits|sheet.traits",
     "f.ck.options|sheet.options",
     "f.ck.when|workshop.au.chWhen|ph:target:trait:undead",
+    "f.ck.roll|workshop.au.sysRoll",
     "f.ck.one|sheet.oneRoll",
     "f.ck.imm.on|workshop.au.immunity"
   ],
@@ -104,6 +105,7 @@ const SNAP = {
     "f.ck.traits|sheet.traits",
     "f.ck.options|sheet.options",
     "f.ck.when|workshop.au.chWhen|ph:target:trait:undead",
+    "f.ck.roll|workshop.au.sysRoll",
     "f.ck.one|sheet.oneRoll",
     "f.ck.imm.on|workshop.au.immunity"
   ],

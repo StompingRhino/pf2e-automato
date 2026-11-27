@@ -90,7 +90,7 @@ export function areaPatch({ isSpell, srcArea, description }, area, base, targets
  * Поля шага вне строки формы (who, escape, repeat, unlessEffect, mark, choice) лежат в row.keep (JSON-строка): вкладка листа
  * несёт её скрытым полем и ничего не теряет, Мастерская правит через keepGet/keepSet. Допустимость — как в валидаторе (rules.mjs vApply). */
 
-export const REFINE = ["ally", "enemy", "escape", "repeat", "unless", "mark", "choice"];
+export const REFINE = ["ally", "enemy", "sustain", "escape", "repeat", "unless", "mark", "choice"];
 const REFINE_CARD = new Set(["escape", "repeat", "unless", "choice"]);   // плашки с параметрами: клик открывает карточку
 const ESCAPE_DEFAULT = ["athletics", "acrobatics"];
 const text = (v) => String(v ?? "").trim();
@@ -106,6 +106,7 @@ function refineWhy(row, key) {
   const own = isOwn(row), carrier = row.kind === "condition" || row.kind === "effect", k = keepGet(row);
   const base = (row.to !== "target" && "needTarget") || (!carrier && "needCarrier") || null;
   switch (key) {
+    case "sustain": return !carrier ? "needCarrier" : row.kind === "condition" && !text(row.durValue) ? "needDur" : null;
     case "escape": return base || (k.repeat != null && "vsRepeat") || null;
     case "repeat": return base || (k.escape != null && "vsEscape") || (row.kind === "condition" && row.policy === "reduce" && "noReduce")
       || (row.kind === "effect" && (row.stack || row.unstack) && "noBadge") || (row.kind === "effect" && row.replace && "noReplace") || null;
@@ -120,12 +121,13 @@ function refineWhy(row, key) {
 /** Плашки шага: [{key, on, card, why (код причины|null), locked (недоступна), bad (включена, но не сочетается или пуста)}]. */
 export function refineState(row) {
   const k = keepGet(row);
-  const on = { ally: k.who === "ally", enemy: k.who === "enemy", escape: k.escape != null, repeat: k.repeat != null, unless: k.unlessEffect != null, mark: k.mark != null, choice: k.choice != null };
+  const on = { ally: k.who === "ally", enemy: k.who === "enemy", sustain: k.sustain === true, escape: k.escape != null, repeat: k.repeat != null, unless: k.unlessEffect != null, mark: k.mark != null, choice: k.choice != null };
   return REFINE.map((key) => { const why = refineWhy(row, key); return { key, on: on[key], card: REFINE_CARD.has(key), why, locked: !!why && !on[key], bad: !!why && on[key] }; });
 }
 
 export function refineSet(row, key, on) {
   if (key === "ally" || key === "enemy") keepSet(row, "who", on ? key : null);   // взаимоисключающие: одно поле who
+  else if (key === "sustain") keepSet(row, "sustain", on ? true : null);
   else if (key === "mark") keepSet(row, "mark", on ? "enemy" : null);
   else if (key === "escape") keepSet(row, "escape", on ? { stats: [...ESCAPE_DEFAULT] } : null);
   else if (key === "repeat") keepSet(row, "repeat", on ? { on: "turn-end" } : null);
@@ -249,9 +251,9 @@ export const chooseOf = (row) => { try { const c = JSON.parse(row.text); return 
 const optsOf = (c) => (Array.isArray(c.options) ? c.options.map((o) => (typeof o === "string" ? { value: o } : { ...o })) : []);
 export function chooseView(row) {
   const c = chooseOf(row);
-  return { from: c.from ?? "", prompt: c.prompt ?? "", range: c.range ?? "", of: c.of ?? "", options: optsOf(c).map((o, i) => ({ i, value: o.value ?? "", label: o.label ?? "", when: typeof o.when === "string" ? o.when : whenText(o.when) })) };
+  return { from: c.from ?? "", prompt: c.prompt ?? "", range: c.range ?? "", of: c.of ?? "", withSelf: !!c.withSelf, where: typeof c.where === "string" ? c.where : whenText(c.where), options: optsOf(c).map((o, i) => ({ i, value: o.value ?? "", label: o.label ?? "", when: typeof o.when === "string" ? o.when : whenText(o.when) })) };
 }
-/** Правка поля: from, prompt, range, of, добавление/удаление вариантов (`opt.add`, `opt.<i>.remove`) и их полей (`opt.<i>.value|label|when`). */
+/** Правка поля: from, prompt, range, of, withSelf, where, добавление/удаление вариантов (`opt.add`, `opt.<i>.remove`) и их полей (`opt.<i>.value|label|when`). */
 export function chooseSet(row, name, v) {
   const c = chooseOf(row), [a, i, f] = name.split(".");
   if (a === "opt") {
@@ -269,6 +271,8 @@ export function chooseSet(row, name, v) {
     else { if (optsOf(c).length) hold(row, "options", optsOf(c)); delete c.options; if (v !== "allies" && v !== "creatures") delete c.withSelf; if (v === "conditions") for (const k of ["range", "of", "where"]) delete c[k]; }
   } else if (a === "range") { const n = numOrRaw(v); if (n == null) delete c.range; else c.range = n; }
   else if (a === "of") { if (v === "target") c.of = "target"; else delete c.of; }
+  else if (a === "withSelf") { if (v === true || v === "true") c.withSelf = true; else delete c.withSelf; }
+  else if (a === "where") { const w = parseWhen(v); if (w === undefined) delete c.where; else c.where = w; }
   else if (text(v)) c[a] = text(v); else delete c[a];
   row.text = JSON.stringify(c);
 }
@@ -295,7 +299,7 @@ export function plate(row, env) {
   const [lo, hi] = [num(row.rankMin), num(row.rankMax)];
   const range = lo !== null && hi !== null ? (lo === hi ? lo : `${lo}–${hi}`) : lo !== null ? `${lo}+` : hi !== null ? `≤${hi}` : null;
   const note = [range !== null && t("workshop.au.keep.rank", { range }), row.kind === "effect" && row.stack && t("workshop.au.keep.stack"), row.kind === "effect" && row.unstack && !row.stack && t("workshop.au.keep.unstack"), row.kind === "removeEffect" && row.ofOrigin && t("workshop.au.keep.ofOrigin"),
-    row.to === "party" && t("workshop.au.keep.party"), row.to === "chosen" && t("workshop.au.keep.chosen"), row.to === "allies" && t("workshop.au.keep.allies", { range: num(row.range) ?? "?" }), String(row.when ?? "").trim() && t("workshop.au.keep.when", { when: String(row.when).trim() }), keep.who && t(`workshop.au.keep.${keep.who}`), keep.unlessEffect && t("workshop.au.keep.unless"), keep.mark && t("workshop.au.keep.mark"), keep.choice != null && t("workshop.au.keep.choice", { v: keep.choice }), keep.escape && t("workshop.au.keep.escape"), keep.repeat && t("workshop.au.keep.repeat"), (row.dmgBasic === true || row.dmgBasic === "true") && t("workshop.au.keep.basic")].filter(Boolean).join(" · ");
+    row.to === "party" && t("workshop.au.keep.party"), row.to === "chosen" && t("workshop.au.keep.chosen"), row.to === "allies" && t("workshop.au.keep.allies", { range: num(row.range) ?? "?" }), String(row.when ?? "").trim() && t("workshop.au.keep.when", { when: String(row.when).trim() }), keep.who && t(`workshop.au.keep.${keep.who}`), keep.sustain && t("workshop.au.keep.sustain"), keep.unlessEffect && t("workshop.au.keep.unless"), keep.mark && t("workshop.au.keep.mark"), keep.choice != null && t("workshop.au.keep.choice", { v: keep.choice }), keep.escape && t("workshop.au.keep.escape"), keep.repeat && t("workshop.au.keep.repeat"), (row.dmgBasic === true || row.dmgBasic === "true") && t("workshop.au.keep.basic")].filter(Boolean).join(" · ");
   const base = { kind: row.kind, valued: false, value: "", dur: "", self: row.to === "self", note };
   if (row.kind === "condition") {
     const value = num(row.value), valued = value !== null || !!env.valued?.(row.text);
@@ -356,12 +360,13 @@ const whoText = (f, env) => {
 export const evSides = (e) => EVENT_SIDES.filter((s) => (e.on !== HP0 || s === "self") && (s !== "target" || EVENT_TARGETED.has(e.on)) && (s !== "near" ? e.on !== "enter" : nearAllowed(e.on, e.counter)));
 /** Смена события записи (форма): сторона и «после использования», ставшие невозможными, сбрасываются. */
 export function evOnChanged(e, v) {
-  if (v === HP0) { e.side = "self"; e.afterUse = false; return; }
+  if (v === HP0) { e.side = "self"; e.afterUse = false; e.hold = false; return; }
   if (!EVENT_USE.has(v)) e.use = false;
   if (e.side === "target" && !EVENT_TARGETED.has(v)) e.side = "self";
   if (!EVENT_AFTER_USE.has(v)) e.afterUse = false;
   if (v === "enter") e.side = "near"; else if (e.side === "near" && !nearAllowed(v, e.counter)) e.side = "self";
   if (e.side !== "self") e.use = false;
+  if (!(e.side === "target" && ["attack-roll", "skill-check"].includes(v))) e.hold = false;
 }
 
 /** Одна запись onEvent (форма) -> строка: событие · сторона · условие: шаги [· испытание]. */

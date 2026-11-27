@@ -254,7 +254,7 @@ const formWith = (row, inChallenge = false) => { const f = ruleToForm(validateRu
 const stateOf = (row) => Object.fromEntries(au.refineState(row).map((s) => [s.key, s]));
 
 const KEEP_FOR = {
-  ally: ["who", "ally"], enemy: ["who", "enemy"], escape: ["escape", { stats: ["athletics"] }], repeat: ["repeat", { on: "turn-end", statistic: "will", dc: 20 }],
+  ally: ["who", "ally"], enemy: ["who", "enemy"], sustain: ["sustain", true], escape: ["escape", { stats: ["athletics"] }], repeat: ["repeat", { on: "turn-end", statistic: "will", dc: 20 }],
   repeatCh: ["repeat", { on: "turn-end" }], unless: ["unlessEffect", "Compendium.x.Item.i"], mark: ["mark", "enemy"], choice: ["choice", "x"]
 };
 const BASES = {
