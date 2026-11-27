@@ -734,7 +734,7 @@ export const EVENT_SIDES = ["self", "target", "origin", "near", "familiar"];
 export const FAMILIAR_ON = ["spell-cast", "spell-sustain"];
 // near (triggered-save T3): аура владельца — «другой» участник (чей ход / кто вошёл) внутри неё: slug Aura RE pf2e (aura) либо футы от владельца (range). enter — только near
 // spell-cast + counter — реакция-контрзаклинание (docs/plan-counterspell-tkmaneuver-hplink.md §M4): сотворение в зоне владельца, срыв чужой карточки
-export const NEAR_ON = ["turn-start", "turn-end", "enter"];   // spell-cast у near — только с counter, в этот список не входит: он про ход/вход
+export const NEAR_ON = ["turn-start", "turn-end", "enter", "damage-taken"];   // spell-cast у near — только с counter, в этот список не входит: он про ход/вход/урон в ауре
 /** Сторона near допустима для события: ход/вход всегда, сотворение — если у записи есть counter. */
 export const nearAllowed = (on, counter) => NEAR_ON.includes(on) || (on === "spell-cast" && counter != null);
 // шаги последствий counter: получатель — владелец записи (self) либо заклинатель (target); выбор, перемещение, удержание, носитель, недуг, Поддержание сюда не относятся

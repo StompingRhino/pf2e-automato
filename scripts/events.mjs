@@ -501,30 +501,33 @@ const nearCarriers = (scene) => (scene?.tokens ?? []).filter(hasNear);
  * Окно per — общий ключ на носителя+предмет+аура и жертву (вход и конец хода в одном ходе/раунде — одна карточка).
  * Порядок: геометрия (дёшево) -> опции и when -> очередь и карточка.
  */
-export async function fireNear(on, carrier, victim, ev, moved = null) {
+export async function fireNear(on, carrier, victim, ev, moved = null, extraOpts = null) {
   const owner = carrier?.actor, actor = victim?.actor;
-  if (!owner || !actor || !isCreature(actor) || carrier.id === victim.id || owner.isDead || actor.isDead || carrier.hidden || victim.hidden || !guardActiveGM()) return;
+  if (!owner || !actor || !isCreature(actor) || carrier.id === victim.id || owner.isDead || actor.isDead || carrier.hidden || victim.hidden || !guardActiveGM()) return [];
   const unit = carrier.parent?.grid?.distance || 5;
   const cands = [];
   for (const found of eventItems(owner)) for (const [i, entry] of (found.rule.onEvent ?? []).entries()) if (entry.side === "near" && entry.on === on) cands.push({ found, i, entry });
-  if (!cands.length) return;
+  if (!cands.length) return [];
   const inside = (radius, c, o) => insideAura(radius, c, o, unit) && !wallBlocked(carrier, c, o);
   let pairs = null;   // enter: пары (носитель, жертва) вдоль пути двигавшегося; [0] — до перемещения
   if (on === "enter") {
-    if (!moved) return;
+    if (!moved) return [];
     const track = pathRects(moved.id === carrier.id ? carrier : victim, moved);
     pairs = moved.id === carrier.id ? track.map((r) => [r, rectOf(victim)]) : track.map((r) => [rectOf(carrier), r]);
   }
   const hits = cands.filter((m) => {
     const radius = nearRadius(m.entry, carrier);
     if (radius == null) return false;
-    // turn-start/turn-end на просматриваемой сцене: аура pf2e сама знает свои стены (тип по чертам ауры) и высоту
+    // turn-start/turn-end/damage-taken на просматриваемой сцене: аура pf2e сама знает свои стены (тип по чертам ауры) и высоту
     const native = !pairs && m.entry.aura && globalThis.canvas?.scene === carrier.parent ? auraOf(carrier, m.entry.aura) : null;
     if (native?.containsToken) return !!native.containsToken(victim);
     return pairs ? !inside(radius, ...pairs[0]) && pairs.some((p) => inside(radius, ...p)) : inside(radius, rectOf(carrier), rectOf(victim));
   });
-  if (!hits.length) return;
-  const options = new Set(["target", ...(actor.getSelfRollOptions?.("target") ?? []), ...(owner.getSelfRollOptions?.("self") ?? [])]);
+  if (!hits.length) return [];
+  // extraOpts (damage-taken): оставляем опции события/урона (item:damage:type:*, damage-taken:*), без self:/target: жертвы — их ставим по паре владелец/жертва
+  const evOpts = extraOpts ? [...extraOpts].filter((o) => !o.startsWith("self:") && !o.startsWith("target:") && o !== "target") : [];
+  const options = new Set([...evOpts, "target", ...(actor.getSelfRollOptions?.("target") ?? []), ...(owner.getSelfRollOptions?.("self") ?? [])]);
+  const log = [];
   await queue(`near:${carrier.uuid}:${victim.id}`, async () => {
     for (const { found, i, entry: src } of hits) {
       if (src.when && !pass(src.when, options)) continue;
@@ -537,10 +540,13 @@ export async function fireNear(on, carrier, victim, ev, moved = null) {
         if (!entry.apply?.length) continue;   // иммунная/не подходящая цель карточки не получает; шаги записи при этом остаются
         entry = { ...entry, challenge: null };
       }
-      try { await runEntry({ id: ev.evId, key, options, other: actor, otherToken: victim, ownerToken: carrier }, owner, found, { i, entry }); }
-      catch (e) { console.error(`${MOD} | near ${found.item.name}[${i}]`, e); }
+      try {
+        const r = await runEntry({ id: ev.evId, key, options, message: ev.message ?? null, other: actor, otherToken: victim, ownerToken: carrier }, owner, found, { i, entry });
+        if (r) log.push(r);
+      } catch (e) { console.error(`${MOD} | near ${found.item.name}[${i}]`, e); }
     }
   });
+  return log;
 }
 
 // ponytail: память ГМа — после перезагрузки посреди хода конец хода берёт previous и может дать одну лишнюю карточку при per; хранить в флаге боя, если станет заметно
@@ -764,6 +770,11 @@ export async function onMessage(message) {
         otherFor: (side) => (side === "self" ? (on === "damage-taken" ? q.origin : q.target) : q.actor), otherTokenFor: (side) => (side === "self" ? (on === "damage-taken" ? tokenOf(q.origin) : q.targetToken) : q.actorToken) };
       // способность фамильяра — один раз на сообщение (проход check), а не по разу на цель сотворения
       const log = await runEvent(ev, on, { self: [q.actor], target: q.target ? [q.target] : [], origin: q.origin && q.origin.uuid !== q.actor.uuid ? [q.origin] : [], familiar: check && on === "spell-cast" ? [q.actor] : [] }, check, held);
+      if (on === "damage-taken" && q.actorToken) {
+        const fight = game.combats?.find((x) => x.started && x.combatants.some((c) => c.tokenId === q.actorToken.id));
+        const nev = { evId: `dmg:${message.id}`, message, combat: fight?.id, round: fight?.round, turn: fight?.turn };
+        for (const carrier of nearCarriers(q.actorToken.parent)) log.push(...(await fireNear("damage-taken", carrier, q.actorToken, nev, null, set)));
+      }
       if (log.length) await message.update({ [flagPath("events")]: [...(message.flags?.[MOD]?.events ?? []), ...log] });
       // страховка: нет ни карточки испытания, ни шага hold (носитель исчез, режимы выключены, карточка не создалась) — атака выпускается (ниже, вне очереди: replay снова зайдёт в onMessage)
       if (held && hold.isHeld(message) && !log.some((r) => r.host) && !hold.hostOf(message)) stuck = true;

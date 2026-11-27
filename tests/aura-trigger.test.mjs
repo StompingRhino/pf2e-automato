@@ -50,8 +50,8 @@ test("near: валидные записи нормализуются (aura | ran
   assert.equal(validate({ v: 1, onEvent: [{ on: "enter", side: "target", challenge: AURA }] }).ok, false);
 });
 
-test("near: отказы — событие не из turn/enter, зона не задана или задана дважды, afterUse, per/aura вне near", () => {
-  for (const bad of [{ on: "attack-roll", range: 10 }, { on: "damage-taken", aura: "x" }, { on: "turn-end" }, { on: "turn-end", aura: "x", range: 10 }, { on: "turn-end", range: 0 },
+test("near: отказы — событие не из turn/enter/damage-taken, зона не задана или задана дважды, afterUse, per/aura вне near", () => {
+  for (const bad of [{ on: "attack-roll", range: 10 }, { on: "saving-throw", aura: "x" }, { on: "turn-end" }, { on: "turn-end", aura: "x", range: 10 }, { on: "turn-end", range: 0 },
     { on: "turn-end", range: "20" }, { on: "turn-end", aura: "" }, { on: "turn-end", aura: 5 }, { on: "turn-end", range: 10, per: "day" }, { on: "turn-end", range: 10, afterUse: true }])
     assert.equal(one(bad).ok, false, JSON.stringify(bad));
   for (const bad of [{ on: "turn-end", side: "self", range: 10 }, { on: "turn-end", side: "self", aura: "x" }, { on: "turn-end", side: "self", per: "round" }])
@@ -389,4 +389,14 @@ test("nearTurn: конец хода берёт раунд из запомнен�
   await ev.nearTurn("turn-start", cbt(tPc), enc(2, 1));
   await ev.nearTurn("turn-end", cbt(tPc), enc(3, 0, { combatantId: "other", round: 3, turn: 0 }));   // previous чужой
   assert.equal(created.length, 1);   // окно раунда 2 то же, что у входа
+});
+
+test("fireNear damage-taken: учитывает extraOpts (тип урона) и не смешивает self/target жертвы с владельцем ауры", async () => {
+  const { tBoss, tPc } = stage([{ on: "damage-taken", aura: "frightful-aura", when: ["item:damage:type:fire", "damage-taken:hp"] }]);
+  const cold = await ev.fireNear("damage-taken", tBoss, tPc, { evId: "d1" }, null, new Set(["item:damage:type:cold", "damage-taken:hp"]));
+  assert.equal(cold.length, 0);
+  assert.equal(created.length, 0);
+  const fire = await ev.fireNear("damage-taken", tBoss, tPc, { evId: "d2" }, null, new Set(["item:damage:type:fire", "damage-taken:hp", "self:trait:victim-only"]));
+  assert.equal(fire.length, 1);
+  assert.equal(created.length, 1);
 });
